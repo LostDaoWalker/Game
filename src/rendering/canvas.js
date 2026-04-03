@@ -20,39 +20,31 @@ export function create() {
 export const toBuffer = canvas => canvas.toBuffer('image/png');
 
 export function bg(ctx) {
-  // Warm deep parchment gradient
+  // Deep true black gradient — modern, sharp
   const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#1e1a12'); grad.addColorStop(.5, '#1a1610'); grad.addColorStop(1, '#15120c');
+  grad.addColorStop(0, '#0c0c0e'); grad.addColorStop(.5, '#09090b'); grad.addColorStop(1, '#060608');
   ctx.fillStyle = grad; rr(ctx, 0, 0, W, H, 12); ctx.fill();
-  // Subtle warm weave
-  ctx.strokeStyle = 'rgba(212,164,74,.02)'; ctx.lineWidth = 1; ctx.beginPath();
+  // Crisp hairline grid — barely visible structure
+  ctx.strokeStyle = 'rgba(255,255,255,.02)'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x < W; x += 48) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
   for (let y = 0; y < H; y += 48) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
   ctx.stroke();
-  // Golden ambient glows — warm hearth feeling
-  for (const [x, y, r, c, a] of [[90, 70, 100, C.primary, .03], [W - 110, H - 90, 120, C.accent, .02], [W / 2, 240, 160, '#d4a44a', .015]]) {
-    const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
-    gr.addColorStop(0, rgba(c, a)); gr.addColorStop(1, 'transparent');
-    ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2);
-  }
-  // Soft grain
-  ctx.fillStyle = 'rgba(0,0,0,.012)';
-  for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+  // Subtle gold accent glow — wealth undertone
+  const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 300);
+  glow.addColorStop(0, rgba(C.accent, .012)); glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
 }
 
 export function panel(ctx, x, y, w, h, opts = {}) {
-  ctx.fillStyle = 'rgba(0,0,0,.25)'; rr(ctx, x + 1, y + 1, w, h, 8); ctx.fill();
-  const g = ctx.createLinearGradient(x, y, x, y + h);
-  g.addColorStop(0, C.panel); g.addColorStop(1, rgba(C.panel, .88));
-  ctx.fillStyle = g; rr(ctx, x, y, w, h, 8); ctx.fill();
-  const gc = opts.gc || C.primary;
-  ctx.strokeStyle = opts.glow ? gc : C.border; ctx.lineWidth = opts.glow ? 1.5 : 1;
-  rr(ctx, x, y, w, h, 8); ctx.stroke();
-  if (opts.glow) { ctx.shadowColor = gc; ctx.shadowBlur = 10; ctx.strokeStyle = rgba(gc, .35); rr(ctx, x, y, w, h, 8); ctx.stroke(); ctx.shadowBlur = 0; }
+  // Sharp panel — no drop shadow, just clean fill + border
+  ctx.fillStyle = C.panel; rr(ctx, x, y, w, h, 6); ctx.fill();
+  const accent = opts.gc || C.border;
+  ctx.strokeStyle = opts.glow ? accent : C.border;
+  ctx.lineWidth = opts.glow ? 1.5 : 1;
+  rr(ctx, x, y, w, h, 6); ctx.stroke();
   if (opts.t) {
     ctx.fillStyle = C.textMuted; ctx.font = "bold 10px 'Courier New',monospace"; ctx.fillText(opts.t.toUpperCase(), x + 10, y + 8);
-    ctx.fillStyle = gc; ctx.beginPath(); ctx.arc(x + 6, y + 13, 2, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = rgba(C.border, .5); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 10, y + 22); ctx.lineTo(x + w - 10, y + 22); ctx.stroke();
+    ctx.strokeStyle = rgba(C.border, .4); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 10, y + 22); ctx.lineTo(x + w - 10, y + 22); ctx.stroke();
   }
 }
 
@@ -88,12 +80,13 @@ export function divider(ctx, x, y, w) {
 }
 
 export function btn(ctx, x, y, w, h, label, color, active) {
-  const g = ctx.createLinearGradient(x, y, x, y + h);
-  g.addColorStop(0, rgba(active ? color : C.panelLight, active ? .25 : .8));
-  g.addColorStop(1, rgba(active ? color : C.panel, active ? .12 : .6));
-  ctx.fillStyle = g; rr(ctx, x, y, w, h, 5); ctx.fill();
-  ctx.strokeStyle = rgba(active ? color : C.border, active ? .7 : .5); ctx.lineWidth = active ? 1.5 : 1; rr(ctx, x, y, w, h, 5); ctx.stroke();
-  ctx.fillStyle = active ? color : C.textDim; ctx.font = "bold 10px 'Courier New',monospace"; ctx.textAlign = 'center'; ctx.fillText(label, x + w / 2, y + h / 2 - 4); ctx.textAlign = 'left';
+  ctx.fillStyle = active ? rgba(color, .15) : C.panelLight;
+  rr(ctx, x, y, w, h, 4); ctx.fill();
+  ctx.strokeStyle = active ? rgba(color, .6) : C.border;
+  ctx.lineWidth = 1; rr(ctx, x, y, w, h, 4); ctx.stroke();
+  ctx.fillStyle = active ? color : C.textDim;
+  ctx.font = "bold 10px 'Courier New',monospace"; ctx.textAlign = 'center';
+  ctx.fillText(label, x + w / 2, y + h / 2 - 4); ctx.textAlign = 'left';
 }
 
 export const rarityColor = r => RARITIES[r]?.color || C.text;
@@ -109,7 +102,7 @@ export function rr(ctx, x, y, w, h, r) {
 // ── Layout ──
 export function layout(player, tab, opts = {}) {
   const { canvas, ctx } = create(); bg(ctx);
-  title(ctx, '☀ HALCYON', 20, 14, 22);
+  title(ctx, 'HALCYON', 20, 14, 22);
   if (opts.sub) txt(ctx, opts.sub, 132, 19, { s: 12, c: C.textMuted });
   let rx = 780;
   for (const s of (opts.stats || [{ l: '🪙', v: fmt(player.gold), c: C.gold }]).reverse()) {
@@ -118,7 +111,7 @@ export function layout(player, tab, opts = {}) {
   divider(ctx, 20, 38, 760);
   panel(ctx, 20, 400, 760, 40);
   for (let i = 0; i < TABS.length; i++) btn(ctx, 28 + i * 123, 405, 118, 28, TABS[i], C.primary, TABS[i] === tab.toUpperCase());
-  txt(ctx, `☀ ${THEME.name} — ${THEME.tagline}`, 20, 458, { s: 9, c: C.textMuted });
+  txt(ctx, `${THEME.name} — ${THEME.tagline}`, 20, 458, { s: 9, c: C.textMuted });
   return { canvas, ctx, bx: 20, by: 46 };
 }
 
