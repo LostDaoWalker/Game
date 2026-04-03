@@ -8,7 +8,7 @@ const updCache = new Map();
 export function getDb() {
   if (db) return db;
   mkdirSync('data', { recursive: true });
-  db = new Database('data/nexus.db');
+  db = new Database('data/halcyon.db');
   db.pragma('journal_mode=WAL'); db.pragma('synchronous=NORMAL'); db.pragma('cache_size=-64000'); db.pragma('foreign_keys=ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS players (

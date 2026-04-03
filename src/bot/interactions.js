@@ -75,7 +75,7 @@ function buildSelectMenu(customId, placeholder, options) {
 }
 
 async function sendView(interaction, playerId, view, combatResult, isReply) {
-  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, combatResult), { name: 'nexus.png' })], components: buildUI(view, playerId), content: '' };
+  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, combatResult), { name: 'halcyon.png' })], components: buildUI(view, playerId), content: '' };
   isReply ? await interaction.reply(payload) : await interaction.update(payload);
 }
 
@@ -84,12 +84,12 @@ async function sendActionResult(interaction, playerId, result, fallbackView) {
   activeView.set(playerId, view);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'nexus.png' })],
+    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'halcyon.png' })],
     components: buildUI(view, playerId),
   });
 }
 
-export async function handleNexusCommand(interaction) {
+export async function handleCommand(interaction) {
   Player.getOrCreatePlayer(interaction.user.id, interaction.user.username);
   activeView.set(interaction.user.id, 'home');
   await sendView(interaction, interaction.user.id, 'home', null, true);
@@ -97,7 +97,7 @@ export async function handleNexusCommand(interaction) {
 
 export async function handleButton(interaction) {
   const playerId = interaction.user.id;
-  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/nexus`', ephemeral: true });
+  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
   const [action, ...args] = interaction.customId.split(':');
   if (action === 'nav') { activeView.set(playerId, args[0]); return sendView(interaction, playerId, args[0]); }
   if (action === 'refresh') return sendView(interaction, playerId, activeView.get(playerId) || 'home');
@@ -108,7 +108,7 @@ export async function handleSelectMenu(interaction) {
   const playerId = interaction.user.id;
   const [menuId] = interaction.customId.split(':');
   const selectedValue = interaction.values[0];
-  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/nexus`', ephemeral: true });
+  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
 
   const menuActions = {
     fight_select: ['fight_enemy', { enemyId: selectedValue }],

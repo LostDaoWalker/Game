@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { getDb } from './core/database.js';
-import { handleNexusCommand, handleButton, handleSelectMenu } from './bot/interactions.js';
+import { handleCommand, handleButton, handleSelectMenu } from './bot/interactions.js';
 
 const TOKEN = process.env.DISCORD_TOKEN;
 if (!TOKEN) { console.error('Missing DISCORD_TOKEN'); process.exit(1); }
@@ -12,7 +12,7 @@ client.once(Events.ClientReady, c => console.log(`☀ HALCYON online as ${c.user
 
 client.on(Events.InteractionCreate, async i => {
   try {
-    if (i.isChatInputCommand() && i.commandName === 'halcyon') return handleNexusCommand(i);
+    if (i.isChatInputCommand() && i.commandName === 'halcyon') return handleCommand(i);
     if (i.isButton()) return handleButton(i);
     if (i.isStringSelectMenu()) return handleSelectMenu(i);
   } catch (e) {
