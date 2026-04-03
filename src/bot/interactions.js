@@ -24,15 +24,15 @@ function renderView(playerId, view, combatResult) {
   const player = Player.getPlayer(playerId);
   if (!player) return null;
 
-  const views = {
-    dashboard: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
+  const viewRenderers = {
+    home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
     fight: () => renderFight(player, combatResult),
     raids: () => renderRaids(player, combatResult),
     inventory: () => renderInventory(player, Player.getAllEquipment(playerId), Player.getEquippedItems(playerId)),
     skills: () => renderSkills(player, skillConfigs(playerId), Player.getSkillOffers(playerId)),
     profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), playerRank(playerId)),
   };
-  return (views[view] || views.home)();
+  return (viewRenderers[view] || viewRenderers.home)();
 }
 
 function playerRank(playerId) {

@@ -323,8 +323,8 @@ export function fightRaid(playerId, raidId) {
     stats: { hp: config.hp, max_hp: config.hp, attack: config.atk, defense: config.def, speed: config.spd, strength: 0 },
     xpRange: config.xp, goldRange: config.gold,
   }, 'raid', (playerLevel, levels) => {
-    const lootBonus = (levels.lucky_looter || 0) * .1;
-    return Math.random() < config.lootChance + lootBonus ? config.lootTable[randBetween(0, config.lootTable.length - 1)] : null;
+    const luckLevel = levels.lucky_looter || 0;
+    return Math.random() < config.lootChance + luckLevel * .05 ? config.lootTable[randBetween(0, config.lootTable.length - 1)] : null;
   });
 }
 
