@@ -14,8 +14,9 @@ export function renderHome(player, equipped, skills, log, lb) {
   R.labelBar(ctx, bx + 12, y, 216, 'XP', player.xp, player.xp_needed, C.xpBar); y += 28;
   R.labelBar(ctx, bx + 12, y, 216, 'HP', player.hp, player.max_hp, C.hpBar); y += 28;
   R.labelBar(ctx, bx + 12, y, 216, 'STAMINA', player.stamina, player.max_stamina, C.staminaBar); y += 32;
-  for (const [lbl, v, c] of [['⚔', player.attack, C.danger], ['🛡', player.defense, C.primary], ['💪', player.strength, C.accent]])
-    { R.txt(ctx, `${lbl} ${v}`, bx + 12 + [0, 68, 136][[C.danger, C.primary, C.accent].indexOf(c)], y, { s: 12, b: true, c }); }
+  R.txt(ctx, `⚔ ${player.attack}`, bx + 12, y, { s: 12, b: true, c: C.danger });
+  R.txt(ctx, `🛡 ${player.defense}`, bx + 80, y, { s: 12, b: true, c: C.primary });
+  R.txt(ctx, `💪 ${player.strength}`, bx + 148, y, { s: 12, b: true, c: C.accent });
   y += 18;
   R.txt(ctx, `⚡ ${player.speed}`, bx + 12, y, { s: 12, b: true, c: C.energyBar });
   R.txt(ctx, `🪙 ${R.fmt(player.gold)}`, bx + 80, y, { s: 13, b: true, c: C.gold });

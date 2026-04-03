@@ -1,6 +1,7 @@
 import { EQUIPMENT, EQUIPMENT_SLOTS, SLOT_ICONS } from '../../core/config.js';
 import * as R from '../canvas.js';
 const C = R.colors;
+const RARITY_ORDER = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
 
 export function renderInventory(player, all, equipped) {
   const { canvas, ctx, bx, by } = R.layout(player, 'inventory', { sub: '// INVENTORY' });
@@ -19,8 +20,7 @@ export function renderInventory(player, all, equipped) {
 
   // Bag
   R.panel(ctx, bx + 272, by, 488, 346, { t: `BAG (${all.length})` });
-  const ro = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
-  const sorted = [...all].sort((a, b) => (ro[EQUIPMENT[a.item_id]?.rarity] ?? 5) - (ro[EQUIPMENT[b.item_id]?.rarity] ?? 5));
+  const sorted = [...all].sort((a, b) => (RARITY_ORDER[EQUIPMENT[a.item_id]?.rarity] ?? 5) - (RARITY_ORDER[EQUIPMENT[b.item_id]?.rarity] ?? 5));
   let iy = by + 28;
   for (let i = 0; i < Math.min(14, sorted.length); i++) {
     const it = sorted[i], cfg = EQUIPMENT[it.item_id]; if (!cfg) continue;
