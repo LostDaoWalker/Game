@@ -66,11 +66,12 @@ export function bar(ctx, x, y, w, h, pct, color) {
   }
 }
 
-export function txt(ctx, s, x, y, opts = {}) {
+export function txt(ctx, text, x, y, opts = {}) {
   ctx.font = `${opts.b ? 'bold ' : ''}${opts.s || 14}px 'Courier New',monospace`;
-  ctx.fillStyle = opts.c || C.text; ctx.textAlign = opts.a || 'left';
-  opts.mw ? ctx.fillText(s, x, y, opts.mw) : ctx.fillText(s, x, y);
-  if (opts.a) ctx.textAlign = 'left';
+  ctx.fillStyle = opts.c || C.text;
+  ctx.textAlign = opts.a || 'left';
+  opts.mw ? ctx.fillText(text, x, y, opts.mw) : ctx.fillText(text, x, y);
+  ctx.textAlign = 'left';
 }
 
 export function title(ctx, s, x, y, sz, color) {
