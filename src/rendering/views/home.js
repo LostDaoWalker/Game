@@ -2,8 +2,8 @@ import { SLOT_ICONS } from '../../core/config.js';
 import * as R from '../canvas.js';
 const C = R.colors;
 
-export function renderDashboard(player, equipped, skills, log, lb) {
-  const { canvas, ctx, bx, by } = R.layout(player, 'dashboard', {
+export function renderHome(player, equipped, skills, log, lb) {
+  const { canvas, ctx, bx, by } = R.layout(player, 'home', {
     sub: `// ${player.username}`,
     stats: [{ l: 'LVL', v: `${player.level}`, c: C.secondary }, { l: 'NET', v: `${R.fmt(player.networth)}g`, c: C.gold }],
   });

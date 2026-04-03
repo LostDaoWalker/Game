@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
 import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, TABS } from '../core/config.js';
-import { renderDashboard } from '../rendering/views/dashboard.js';
+import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
 import { renderInventory } from '../rendering/views/inventory.js';
@@ -25,14 +25,14 @@ function renderView(playerId, view, combatResult) {
   if (!player) return null;
 
   const views = {
-    dashboard: () => renderDashboard(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
+    dashboard: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
     fight: () => renderFight(player, combatResult),
     raids: () => renderRaids(player, combatResult),
     inventory: () => renderInventory(player, Player.getAllEquipment(playerId), Player.getEquippedItems(playerId)),
     skills: () => renderSkills(player, skillConfigs(playerId), Player.getSkillOffers(playerId)),
     profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), playerRank(playerId)),
   };
-  return (views[view] || views.dashboard)();
+  return (views[view] || views.home)();
 }
 
 function playerRank(playerId) {
@@ -80,7 +80,7 @@ async function sendView(interaction, playerId, view, combatResult, isReply) {
 }
 
 async function sendActionResult(interaction, playerId, result, fallbackView) {
-  const view = result.view || fallbackView || activeView.get(playerId) || 'dashboard';
+  const view = result.view || fallbackView || activeView.get(playerId) || 'home';
   activeView.set(playerId, view);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
@@ -91,8 +91,8 @@ async function sendActionResult(interaction, playerId, result, fallbackView) {
 
 export async function handleNexusCommand(interaction) {
   Player.getOrCreatePlayer(interaction.user.id, interaction.user.username);
-  activeView.set(interaction.user.id, 'dashboard');
-  await sendView(interaction, interaction.user.id, 'dashboard', null, true);
+  activeView.set(interaction.user.id, 'home');
+  await sendView(interaction, interaction.user.id, 'home', null, true);
 }
 
 export async function handleButton(interaction) {
@@ -100,7 +100,7 @@ export async function handleButton(interaction) {
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/nexus`', ephemeral: true });
   const [action, ...args] = interaction.customId.split(':');
   if (action === 'nav') { activeView.set(playerId, args[0]); return sendView(interaction, playerId, args[0]); }
-  if (action === 'refresh') return sendView(interaction, playerId, activeView.get(playerId) || 'dashboard');
+  if (action === 'refresh') return sendView(interaction, playerId, activeView.get(playerId) || 'home');
   return sendActionResult(interaction, playerId, executeAction(playerId, action, {}));
 }
 
