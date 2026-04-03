@@ -19,10 +19,10 @@ const skillConfigs = playerId => Player.getPlayerSkills(playerId)
   .filter(Boolean);
 
 function renderView(playerId, view, combatResult) {
-  Player.regenStamina(Player.getPlayer(playerId));
+  if (!Player.getPlayer(playerId)) return null;
+  Player.regenStamina(playerId);
   Player.updateNetworth(playerId);
   const player = Player.getPlayer(playerId);
-  if (!player) return null;
 
   const viewRenderers = {
     home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
@@ -30,18 +30,13 @@ function renderView(playerId, view, combatResult) {
     raids: () => renderRaids(player, combatResult),
     inventory: () => renderInventory(player, Player.getAllEquipment(playerId), Player.getEquippedItems(playerId)),
     skills: () => renderSkills(player, skillConfigs(playerId), Player.getSkillOffers(playerId)),
-    profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), playerRank(playerId)),
+    profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), Player.getRank(playerId)),
   };
   return (viewRenderers[view] || viewRenderers.home)();
 }
 
-function playerRank(playerId) {
-  const index = Player.getLeaderboard(100).findIndex(entry => entry.id === playerId);
-  return index >= 0 ? index + 1 : 99;
-}
-
 function executeAction(playerId, action, args = {}) {
-  Player.regenStamina(Player.getPlayer(playerId));
+  Player.regenStamina(playerId);
 
   const formatCombatResult = (result, view) => {
     if (!result.success) return result;

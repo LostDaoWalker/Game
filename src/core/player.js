@@ -27,12 +27,13 @@ export function getOrCreatePlayer(id, username) {
 
 // ── Stamina ──
 
-export function regenStamina(player) {
+export function regenStamina(playerId) {
+  const player = getPlayer(playerId);
   const now = Date.now() / 1000 | 0;
   const ticks = (now - player.stamina_regen_at) / ECO.staminaRegen | 0;
   if (ticks > 0 && player.stamina < player.max_stamina) {
-    player.stamina = Math.min(player.max_stamina, player.stamina + ticks);
-    upd(player.id, { stamina: player.stamina, stamina_regen_at: player.stamina_regen_at + ticks * ECO.staminaRegen });
+    const newStamina = Math.min(player.max_stamina, player.stamina + ticks);
+    upd(playerId, { stamina: newStamina, stamina_regen_at: player.stamina_regen_at + ticks * ECO.staminaRegen });
   }
 }
 
@@ -111,7 +112,6 @@ function getSkillLevel(playerId, skillId) {
   return row?.level || 0;
 }
 
-// Returns flat { skillId: level } — combat sim reads this instead of skill config objects
 function getSkillLevelMap(playerId) {
   const levels = {};
   for (const row of getPlayerSkills(playerId)) levels[row.skill_id] = row.level;
@@ -160,7 +160,6 @@ function getEffectiveStats(playerId) {
   };
 }
 
-// Reads a skill level from the flat { skillId: level } map
 const readLevel = (levelMap, skillId) => levelMap[skillId] || 0;
 
 function simulate(attacker, defender, attackerLevels, defenderLevels) {
@@ -273,7 +272,6 @@ function simulate(attacker, defender, attackerLevels, defenderLevels) {
   };
 }
 
-// Single combat path for PvE, PvP, and raids
 function executeCombat(playerId, foe, combatType, lootFn) {
   const player = getPlayer(playerId);
   if (player.stamina < foe.cost) return { success: false, error: 'Not enough stamina' };
@@ -381,3 +379,7 @@ export function updateNetworth(playerId) {
 
 export const getRecentLog = (playerId, limit = 5) => sql('SELECT * FROM combat_log WHERE player_id=? ORDER BY timestamp DESC LIMIT ?').all(playerId, limit);
 export const getLeaderboard = (limit = 10) => sql('SELECT id,username,networth,level,pvp_wins FROM players ORDER BY networth DESC LIMIT ?').all(limit);
+export function getRank(playerId) {
+  const row = sql('SELECT COUNT(*) + 1 AS rank FROM players WHERE networth > (SELECT networth FROM players WHERE id=?)').get(playerId);
+  return row?.rank || 99;
+}
