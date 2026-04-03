@@ -4,12 +4,16 @@ const C = THEME.colors, W = CANVAS.width, H = CANVAS.height;
 export { C as colors };
 
 // ── rgba memoization — eliminates thousands of repeated string builds per frame ──
-const _rgba = new Map();
+const _rgbaCache = new Map();
 export function rgba(hex, a = 1) {
-  const k = hex + a;
-  let v = _rgba.get(k);
-  if (!v) { v = `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`; _rgba.set(k, v); }
-  return v;
+  const key = hex + a;
+  let cached = _rgbaCache.get(key);
+  if (!cached) {
+    if (_rgbaCache.size > 512) _rgbaCache.clear();
+    cached = `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${a})`;
+    _rgbaCache.set(key, cached);
+  }
+  return cached;
 }
 
 export function create() {

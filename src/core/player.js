@@ -160,7 +160,7 @@ function getEffectiveStats(playerId) {
   };
 }
 
-const readLevel = (levelMap, skillId) => levelMap[skillId] || 0;
+const readLevel = (levelMap, skillId) => levelMap[skillId] ?? 0;
 
 function simulate(attacker, defender, attackerLevels, defenderLevels) {
   let attackerHp = attacker.max_hp || attacker.hp;
