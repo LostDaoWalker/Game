@@ -23,82 +23,97 @@ function initSchema(db) {
       username TEXT NOT NULL,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
       last_active INTEGER NOT NULL DEFAULT (unixepoch()),
+
       -- Currency
-      credits INTEGER NOT NULL DEFAULT 500,
-      crypto INTEGER NOT NULL DEFAULT 0,
-      -- Stats
+      gold INTEGER NOT NULL DEFAULT 100,
+
+      -- Core Stats
       level INTEGER NOT NULL DEFAULT 1,
       xp INTEGER NOT NULL DEFAULT 0,
-      xp_needed INTEGER NOT NULL DEFAULT 100,
+      xp_needed INTEGER NOT NULL DEFAULT 80,
       hp INTEGER NOT NULL DEFAULT 100,
       max_hp INTEGER NOT NULL DEFAULT 100,
-      attack INTEGER NOT NULL DEFAULT 10,
-      defense INTEGER NOT NULL DEFAULT 5,
-      -- Networth tracking
-      networth INTEGER NOT NULL DEFAULT 500,
-      peak_networth INTEGER NOT NULL DEFAULT 500,
-      -- Progression
-      reputation INTEGER NOT NULL DEFAULT 0,
-      energy INTEGER NOT NULL DEFAULT 100,
-      max_energy INTEGER NOT NULL DEFAULT 100,
-      energy_regen_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      -- Active state
+      attack INTEGER NOT NULL DEFAULT 8,
+      defense INTEGER NOT NULL DEFAULT 4,
+      speed INTEGER NOT NULL DEFAULT 5,
+      strength INTEGER NOT NULL DEFAULT 5,
+
+      -- Stamina
+      stamina INTEGER NOT NULL DEFAULT 10,
+      max_stamina INTEGER NOT NULL DEFAULT 10,
+      stamina_regen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+
+      -- Combat record
+      wins INTEGER NOT NULL DEFAULT 0,
+      losses INTEGER NOT NULL DEFAULT 0,
+      pvp_wins INTEGER NOT NULL DEFAULT 0,
+      pvp_losses INTEGER NOT NULL DEFAULT 0,
+      raids_completed INTEGER NOT NULL DEFAULT 0,
+      bosses_killed INTEGER NOT NULL DEFAULT 0,
+
+      -- Networth
+      networth INTEGER NOT NULL DEFAULT 100,
+      peak_networth INTEGER NOT NULL DEFAULT 100,
+
+      -- Pupils (My Brute referral system)
+      mentor_id TEXT,
+      pupil_count INTEGER NOT NULL DEFAULT 0,
+
+      -- Pending skill picks (accumulated on level-up)
+      pending_skill_picks INTEGER NOT NULL DEFAULT 0,
+
+      -- Active view
       current_view TEXT NOT NULL DEFAULT 'dashboard'
     );
 
-    CREATE TABLE IF NOT EXISTS businesses (
+    CREATE TABLE IF NOT EXISTS equipment (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       player_id TEXT NOT NULL REFERENCES players(id),
-      type TEXT NOT NULL,
-      level INTEGER NOT NULL DEFAULT 1,
-      income_rate INTEGER NOT NULL DEFAULT 0,
-      last_collected INTEGER NOT NULL DEFAULT (unixepoch()),
-      UNIQUE(player_id, type)
-    );
-
-    CREATE TABLE IF NOT EXISTS inventory (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      player_id TEXT NOT NULL REFERENCES players(id),
-      item_type TEXT NOT NULL,
       item_id TEXT NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 1,
-      UNIQUE(player_id, item_id)
+      equipped INTEGER NOT NULL DEFAULT 0,
+      obtained_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
-    CREATE TABLE IF NOT EXISTS missions (
+    CREATE TABLE IF NOT EXISTS skills (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       player_id TEXT NOT NULL REFERENCES players(id),
-      mission_id TEXT NOT NULL,
-      started_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      completes_at INTEGER NOT NULL,
-      completed INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(player_id, mission_id)
+      skill_id TEXT NOT NULL,
+      level INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(player_id, skill_id)
     );
 
-    CREATE TABLE IF NOT EXISTS market_history (
+    CREATE TABLE IF NOT EXISTS combat_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      player_id TEXT NOT NULL REFERENCES players(id),
-      action TEXT NOT NULL,
-      amount INTEGER NOT NULL,
-      price INTEGER NOT NULL,
+      player_id TEXT NOT NULL,
+      opponent_type TEXT NOT NULL, -- 'pve', 'pvp', 'raid'
+      opponent_name TEXT NOT NULL,
+      won INTEGER NOT NULL,
+      damage_dealt INTEGER NOT NULL DEFAULT 0,
+      damage_taken INTEGER NOT NULL DEFAULT 0,
+      gold_earned INTEGER NOT NULL DEFAULT 0,
+      xp_earned INTEGER NOT NULL DEFAULT 0,
+      loot_item TEXT,
       timestamp INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
-    CREATE TABLE IF NOT EXISTS leaderboard_cache (
-      player_id TEXT PRIMARY KEY REFERENCES players(id),
-      networth INTEGER NOT NULL DEFAULT 0,
-      rank INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+    CREATE TABLE IF NOT EXISTS skill_offers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      skill1 TEXT NOT NULL,
+      skill2 TEXT NOT NULL,
+      skill3 TEXT NOT NULL,
+      created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(player_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_businesses_player ON businesses(player_id);
-    CREATE INDEX IF NOT EXISTS idx_inventory_player ON inventory(player_id);
-    CREATE INDEX IF NOT EXISTS idx_missions_player ON missions(player_id);
-    CREATE INDEX IF NOT EXISTS idx_leaderboard_networth ON leaderboard_cache(networth DESC);
+    CREATE INDEX IF NOT EXISTS idx_equipment_player ON equipment(player_id);
+    CREATE INDEX IF NOT EXISTS idx_skills_player ON skills(player_id);
+    CREATE INDEX IF NOT EXISTS idx_combat_log_player ON combat_log(player_id);
+    CREATE INDEX IF NOT EXISTS idx_players_networth ON players(networth DESC);
   `);
 }
 
-// Prepared statement cache for performance
+// Prepared statement cache
 const stmtCache = new Map();
 
 export function prepare(sql) {

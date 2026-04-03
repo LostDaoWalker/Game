@@ -1,10 +1,12 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { THEME, CANVAS } from '../core/config.js';
+import { THEME, CANVAS, RARITIES } from '../core/config.js';
 
 const { colors } = THEME;
-const { width, height, padding, cornerRadius } = CANVAS;
+const { width, height } = CANVAS;
 
-// ─── Canvas Helpers ─────────────────────────────
+// ═══════════════════════════════════════════════
+// Canvas Factory
+// ═══════════════════════════════════════════════
 
 export function createGameCanvas() {
   const canvas = createCanvas(width, height);
@@ -14,38 +16,41 @@ export function createGameCanvas() {
   return { canvas, ctx };
 }
 
-export function drawBackground(ctx) {
-  // Main gradient background
-  const grad = ctx.createLinearGradient(0, 0, 0, height);
-  grad.addColorStop(0, colors.bg);
-  grad.addColorStop(1, '#060a12');
-  ctx.fillStyle = grad;
-  roundRect(ctx, 0, 0, width, height, cornerRadius);
-  ctx.fill();
-
-  // Subtle grid pattern
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.03)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
-  }
-  for (let y = 0; y < height; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
-
-  // Glow orbs (decorative)
-  drawGlowOrb(ctx, 100, 80, 60, colors.primary, 0.04);
-  drawGlowOrb(ctx, width - 120, height - 100, 80, colors.secondary, 0.03);
-  drawGlowOrb(ctx, width / 2, height / 2, 100, colors.primary, 0.02);
+export function canvasToBuffer(canvas) {
+  return canvas.toBuffer('image/png');
 }
 
-function drawGlowOrb(ctx, x, y, radius, color, alpha) {
+// ═══════════════════════════════════════════════
+// Background & Atmosphere
+// ═══════════════════════════════════════════════
+
+export function drawBackground(ctx) {
+  // Deep warm gradient — cozy but modern
+  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  grad.addColorStop(0, '#0c1018');
+  grad.addColorStop(0.5, '#0a0e17');
+  grad.addColorStop(1, '#080b12');
+  ctx.fillStyle = grad;
+  roundRect(ctx, 0, 0, width, height, 12);
+  ctx.fill();
+
+  // Soft grid — subtle warmth
+  ctx.strokeStyle = 'rgba(168, 140, 255, 0.018)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += 48) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+  }
+  for (let y = 0; y < height; y += 48) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+  }
+
+  // Ambient glow orbs for cozy warmth
+  drawGlow(ctx, 80, 60, 90, colors.secondary, 0.025);
+  drawGlow(ctx, width - 100, height - 80, 110, colors.primary, 0.018);
+  drawGlow(ctx, width / 2, 250, 150, '#f59e0b', 0.012);
+}
+
+function drawGlow(ctx, x, y, radius, color, alpha) {
   const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
   grad.addColorStop(0, hexToRgba(color, alpha));
   grad.addColorStop(1, 'transparent');
@@ -53,16 +58,29 @@ function drawGlowOrb(ctx, x, y, radius, color, alpha) {
   ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
 }
 
-export function drawPanel(ctx, x, y, w, h, { title, glow, glowColor } = {}) {
-  // Panel shadow
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-  roundRect(ctx, x + 2, y + 2, w, h, 8);
+export function drawScanlines(ctx) {
+  for (let y = 0; y < height; y += 4) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.015)';
+    ctx.fillRect(0, y, width, 1);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// Panel — the core building block
+// ═══════════════════════════════════════════════
+
+export function drawPanel(ctx, x, y, w, h, opts = {}) {
+  const { title, glow, glowColor, filled } = opts;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  roundRect(ctx, x + 1, y + 1, w, h, 8);
   ctx.fill();
 
-  // Panel background
+  // Background
   const grad = ctx.createLinearGradient(x, y, x, y + h);
-  grad.addColorStop(0, colors.panel);
-  grad.addColorStop(1, hexToRgba(colors.panel, 0.85));
+  grad.addColorStop(0, filled || colors.panel);
+  grad.addColorStop(1, filled ? hexToRgba(filled, 0.85) : hexToRgba(colors.panel, 0.88));
   ctx.fillStyle = grad;
   roundRect(ctx, x, y, w, h, 8);
   ctx.fill();
@@ -73,121 +91,93 @@ export function drawPanel(ctx, x, y, w, h, { title, glow, glowColor } = {}) {
   roundRect(ctx, x, y, w, h, 8);
   ctx.stroke();
 
-  // Glow effect on border
+  // Glow bloom
   if (glow) {
     ctx.shadowColor = glowColor || colors.primary;
-    ctx.shadowBlur = 8;
-    ctx.strokeStyle = hexToRgba(glowColor || colors.primary, 0.5);
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = hexToRgba(glowColor || colors.primary, 0.35);
     roundRect(ctx, x, y, w, h, 8);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
 
-  // Panel title
+  // Title bar
   if (title) {
-    ctx.fillStyle = colors.textDim;
-    ctx.font = `bold 11px 'Courier New', monospace`;
+    ctx.fillStyle = colors.textMuted;
+    ctx.font = `bold 10px 'Courier New', monospace`;
     ctx.fillText(title.toUpperCase(), x + 10, y + 8);
-    // Underline
-    ctx.strokeStyle = colors.border;
+    // Accent dot
+    ctx.fillStyle = glowColor || colors.primary;
+    ctx.beginPath();
+    ctx.arc(x + 6, y + 13, 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Subtle separator
+    ctx.strokeStyle = hexToRgba(colors.border, 0.5);
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x + 10, y + 24);
-    ctx.lineTo(x + w - 10, y + 24);
+    ctx.moveTo(x + 10, y + 22);
+    ctx.lineTo(x + w - 10, y + 22);
     ctx.stroke();
   }
 }
 
+// ═══════════════════════════════════════════════
+// Progress Bars
+// ═══════════════════════════════════════════════
+
 export function drawProgressBar(ctx, x, y, w, h, progress, color, bgColor) {
-  // Background
-  ctx.fillStyle = bgColor || 'rgba(0, 0, 0, 0.4)';
+  const p = Math.max(0, Math.min(1, progress));
+
+  // Track
+  ctx.fillStyle = bgColor || 'rgba(0, 0, 0, 0.35)';
   roundRect(ctx, x, y, w, h, h / 2);
   ctx.fill();
 
   // Fill
-  const fillWidth = Math.max(0, Math.min(1, progress)) * w;
-  if (fillWidth > 2) {
-    const grad = ctx.createLinearGradient(x, y, x + fillWidth, y);
-    grad.addColorStop(0, color);
-    grad.addColorStop(1, hexToRgba(color, 0.7));
+  const fillW = Math.max(0, p * w);
+  if (fillW > 2) {
+    const grad = ctx.createLinearGradient(x, y, x + fillW, y);
+    grad.addColorStop(0, hexToRgba(color, 0.9));
+    grad.addColorStop(1, hexToRgba(color, 0.6));
     ctx.fillStyle = grad;
-    roundRect(ctx, x, y, fillWidth, h, h / 2);
+    roundRect(ctx, x, y, fillW, h, h / 2);
     ctx.fill();
 
-    // Shine
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-    roundRect(ctx, x, y, fillWidth, h / 2, h / 2);
+    // Top shine
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    roundRect(ctx, x + 1, y, fillW - 2, h * 0.45, h / 2);
     ctx.fill();
   }
 }
 
-export function drawStatLine(ctx, x, y, label, value, color) {
-  ctx.font = `12px 'Courier New', monospace`;
-  ctx.fillStyle = colors.textMuted;
-  ctx.fillText(label, x, y);
-  ctx.fillStyle = color || colors.text;
-  ctx.font = `bold 13px 'Courier New', monospace`;
-  ctx.textAlign = 'right';
-  ctx.fillText(value, x + 200, y);
-  ctx.textAlign = 'left';
-}
+// ═══════════════════════════════════════════════
+// Text Primitives
+// ═══════════════════════════════════════════════
 
 export function drawTitle(ctx, text, x, y, size, color) {
   ctx.font = `bold ${size || 28}px 'Courier New', monospace`;
-  // Glow
   ctx.shadowColor = color || colors.primary;
-  ctx.shadowBlur = 12;
+  ctx.shadowBlur = 14;
   ctx.fillStyle = color || colors.primary;
   ctx.fillText(text, x, y);
   ctx.shadowBlur = 0;
 }
 
-export function drawText(ctx, text, x, y, { size = 14, color = colors.text, bold = false, align = 'left', maxWidth } = {}) {
+export function drawText(ctx, text, x, y, opts = {}) {
+  const { size = 14, color = colors.text, bold = false, align = 'left', maxWidth } = opts;
   ctx.font = `${bold ? 'bold ' : ''}${size}px 'Courier New', monospace`;
   ctx.fillStyle = color;
   ctx.textAlign = align;
-  if (maxWidth) {
-    ctx.fillText(text, x, y, maxWidth);
-  } else {
-    ctx.fillText(text, x, y);
-  }
-  ctx.textAlign = 'left';
-}
-
-export function drawIcon(ctx, emoji, x, y, size = 16) {
-  ctx.font = `${size}px serif`;
-  ctx.fillText(emoji, x, y);
-}
-
-export function drawButton(ctx, x, y, w, h, label, color, active = false) {
-  const grad = ctx.createLinearGradient(x, y, x, y + h);
-  if (active) {
-    grad.addColorStop(0, hexToRgba(color, 0.3));
-    grad.addColorStop(1, hexToRgba(color, 0.15));
-  } else {
-    grad.addColorStop(0, colors.panelLight);
-    grad.addColorStop(1, colors.panel);
-  }
-  ctx.fillStyle = grad;
-  roundRect(ctx, x, y, w, h, 6);
-  ctx.fill();
-
-  ctx.strokeStyle = active ? color : colors.border;
-  ctx.lineWidth = active ? 1.5 : 1;
-  roundRect(ctx, x, y, w, h, 6);
-  ctx.stroke();
-
-  ctx.fillStyle = active ? color : colors.textDim;
-  ctx.font = `bold 11px 'Courier New', monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText(label, x + w / 2, y + h / 2 - 5);
+  if (maxWidth) ctx.fillText(text, x, y, maxWidth);
+  else ctx.fillText(text, x, y);
   ctx.textAlign = 'left';
 }
 
 export function drawDivider(ctx, x, y, w) {
   const grad = ctx.createLinearGradient(x, y, x + w, y);
   grad.addColorStop(0, 'transparent');
-  grad.addColorStop(0.5, colors.border);
+  grad.addColorStop(0.3, hexToRgba(colors.border, 0.6));
+  grad.addColorStop(0.7, hexToRgba(colors.border, 0.6));
   grad.addColorStop(1, 'transparent');
   ctx.strokeStyle = grad;
   ctx.lineWidth = 1;
@@ -197,7 +187,56 @@ export function drawDivider(ctx, x, y, w) {
   ctx.stroke();
 }
 
-// ─── Utilities ──────────────────────────────────
+export function drawButton(ctx, x, y, w, h, label, color, active = false) {
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  if (active) {
+    grad.addColorStop(0, hexToRgba(color, 0.25));
+    grad.addColorStop(1, hexToRgba(color, 0.12));
+  } else {
+    grad.addColorStop(0, hexToRgba(colors.panelLight, 0.8));
+    grad.addColorStop(1, hexToRgba(colors.panel, 0.6));
+  }
+  ctx.fillStyle = grad;
+  roundRect(ctx, x, y, w, h, 5);
+  ctx.fill();
+
+  ctx.strokeStyle = active ? hexToRgba(color, 0.7) : hexToRgba(colors.border, 0.5);
+  ctx.lineWidth = active ? 1.5 : 1;
+  roundRect(ctx, x, y, w, h, 5);
+  ctx.stroke();
+
+  ctx.fillStyle = active ? color : colors.textDim;
+  ctx.font = `bold 10px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText(label, x + w / 2, y + h / 2 - 4);
+  ctx.textAlign = 'left';
+}
+
+// ═══════════════════════════════════════════════
+// Rarity & Formatting Utils
+// ═══════════════════════════════════════════════
+
+export function getRarityColor(rarity) {
+  return RARITIES[rarity]?.color || colors.text;
+}
+
+export function formatNumber(n) {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
+
+export function formatTime(seconds) {
+  if (seconds <= 0) return 'Ready';
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
+}
+
+// ═══════════════════════════════════════════════
+// Geometry
+// ═══════════════════════════════════════════════
 
 export function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -218,22 +257,4 @@ export function hexToRgba(hex, alpha = 1) {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-export function formatNumber(n) {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 10_000) return `${(n / 1_000).toFixed(1)}K`;
-  return n.toLocaleString();
-}
-
-export function formatTime(seconds) {
-  if (seconds <= 0) return 'Ready';
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-}
-
-export function canvasToBuffer(canvas) {
-  return canvas.toBuffer('image/png');
 }

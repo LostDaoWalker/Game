@@ -1,136 +1,112 @@
-import { THEME } from '../../core/config.js';
+import { THEME, EQUIPMENT } from '../../core/config.js';
 import * as C from '../canvas.js';
+import { createLayout, drawLabeledBar } from '../layout.js';
 
 const { colors } = THEME;
 
-export function renderProfile(player, businesses, inventory, rank) {
-  const { canvas, ctx } = C.createGameCanvas();
-  C.drawBackground(ctx);
+export function renderProfile(player, equipment, skills, rank) {
+  const { canvas, ctx, body } = createLayout(player, 'profile', {
+    subtitle: '// DOSSIER',
+    rightStats: [{ label: 'RANK', value: `#${rank}`, color: colors.accent }],
+  });
 
-  // Header
-  C.drawTitle(ctx, '◆ NEXUS', 20, 16, 24, colors.primary);
-  C.drawText(ctx, '// OPERATIVE DOSSIER', 140, 22, { size: 13, color: colors.textDim });
-  C.drawDivider(ctx, 20, 42, 760);
+  const bx = body.x;
+  const by = body.y;
 
-  // ─── Avatar Area ───
-  C.drawPanel(ctx, 20, 52, 250, 200, { glow: true, glowColor: colors.primary });
+  // ─── Identity Card ───
+  C.drawPanel(ctx, bx, by, 260, 180, { glow: true, glowColor: colors.primary });
+  C.drawText(ctx, player.username, bx + 130, by + 16, {
+    size: 18, bold: true, color: colors.primary, align: 'center', maxWidth: 240,
+  });
+  const medals = ['🥇', '🥈', '🥉'];
+  const rankLabel = rank <= 3 ? `${medals[rank - 1]} #${rank}` : `#${rank}`;
+  C.drawText(ctx, rankLabel, bx + 130, by + 40, { size: 15, bold: true, color: colors.accent, align: 'center' });
+  C.drawText(ctx, `Level ${player.level} Operative`, bx + 130, by + 62, { size: 12, color: colors.secondary, align: 'center' });
 
-  // Large username
-  C.drawText(ctx, player.username, 145, 72, { size: 20, bold: true, color: colors.primary, align: 'center', maxWidth: 220 });
+  C.drawDivider(ctx, bx + 20, by + 82, 220);
 
-  // Rank badge
-  const rankText = rank <= 3 ? ['🥇', '🥈', '🥉'][rank - 1] + ` #${rank}` : `#${rank}`;
-  C.drawText(ctx, rankText, 145, 100, { size: 16, bold: true, color: colors.accent, align: 'center' });
+  let iy = by + 92;
+  for (const [label, value] of [
+    ['JOINED', new Date(player.created_at * 1000).toLocaleDateString()],
+    ['LAST ACTIVE', new Date(player.last_active * 1000).toLocaleDateString()],
+    ['PUPILS', `${player.pupil_count}`],
+  ]) {
+    C.drawText(ctx, label, bx + 20, iy, { size: 9, color: colors.textMuted });
+    C.drawText(ctx, value, bx + 240, iy, { size: 10, color: colors.textDim, align: 'right' });
+    iy += 16;
+  }
 
-  C.drawText(ctx, `Level ${player.level} Operative`, 145, 124, { size: 13, color: colors.secondary, align: 'center' });
+  drawLabeledBar(ctx, bx + 20, iy + 4, 220, 'XP', player.xp, player.xp_needed, colors.xpBar);
 
-  C.drawDivider(ctx, 40, 146, 210);
-
-  // Joined date
-  C.drawText(ctx, 'JOINED', 40, 156, { size: 10, color: colors.textMuted });
-  C.drawText(ctx, new Date(player.created_at * 1000).toLocaleDateString(), 250, 156, { size: 11, color: colors.textDim, align: 'right' });
-
-  C.drawText(ctx, 'LAST ACTIVE', 40, 174, { size: 10, color: colors.textMuted });
-  C.drawText(ctx, new Date(player.last_active * 1000).toLocaleDateString(), 250, 174, { size: 11, color: colors.textDim, align: 'right' });
-
-  C.drawText(ctx, 'REPUTATION', 40, 192, { size: 10, color: colors.textMuted });
-  C.drawText(ctx, C.formatNumber(player.reputation), 250, 192, { size: 11, color: colors.accent, align: 'right' });
-
-  // XP bar
-  C.drawText(ctx, `XP: ${C.formatNumber(player.xp)}/${C.formatNumber(player.xp_needed)}`, 40, 216, { size: 10, color: colors.textMuted });
-  C.drawProgressBar(ctx, 40, 230, 210, 8, player.xp / player.xp_needed, colors.xpBar);
-
-  // ─── Stats Panel ───
-  C.drawPanel(ctx, 290, 52, 230, 200, { title: 'COMBAT STATS' });
-
-  let sy = 82;
-  const stats = [
+  // ─── Combat Stats ───
+  C.drawPanel(ctx, bx + 272, by, 234, 180, { title: 'COMBAT' });
+  let sy = by + 28;
+  for (const [label, val, col] of [
     ['LEVEL', player.level, colors.secondary],
     ['ATTACK', player.attack, colors.danger],
     ['DEFENSE', player.defense, colors.primary],
+    ['SPEED', player.speed, colors.energyBar],
+    ['STRENGTH', player.strength, colors.accent],
     ['MAX HP', player.max_hp, colors.hpBar],
-    ['MAX ENERGY', player.max_energy, colors.energyBar],
-    ['NETWORTH', `₡${C.formatNumber(player.networth)}`, colors.creditsGold],
-    ['PEAK NET', `₡${C.formatNumber(player.peak_networth)}`, colors.accent],
-  ];
-
-  for (const [label, value, color] of stats) {
-    C.drawText(ctx, label, 302, sy, { size: 11, color: colors.textMuted });
-    C.drawText(ctx, String(value), 508, sy, { size: 12, bold: true, color, align: 'right' });
-    sy += 22;
+    ['NETWORTH', `${C.formatNumber(player.networth)}g`, colors.gold],
+  ]) {
+    C.drawText(ctx, label, bx + 284, sy, { size: 10, color: colors.textMuted });
+    C.drawText(ctx, String(val), bx + 494, sy, { size: 11, bold: true, color: col, align: 'right' });
+    sy += 20;
   }
 
-  // ─── Assets Panel ───
-  C.drawPanel(ctx, 540, 52, 240, 200, { title: 'ASSETS' });
+  // ─── Record ───
+  C.drawPanel(ctx, bx + 518, by, 242, 180, { title: 'RECORD' });
+  let ry = by + 28;
+  for (const [label, val, col] of [
+    ['PvE Wins', player.wins, colors.success],
+    ['PvE Losses', player.losses, colors.danger],
+    ['PvP Wins', player.pvp_wins, colors.success],
+    ['PvP Losses', player.pvp_losses, colors.danger],
+    ['Raids Done', player.raids_completed, colors.legendary],
+    ['Bosses Killed', player.bosses_killed, colors.accent],
+    ['Peak Net', `${C.formatNumber(player.peak_networth)}g`, colors.gold],
+  ]) {
+    C.drawText(ctx, label, bx + 530, ry, { size: 10, color: colors.textMuted });
+    C.drawText(ctx, String(val), bx + 748, ry, { size: 11, bold: true, color: col, align: 'right' });
+    ry += 20;
+  }
 
-  let ay = 82;
-  C.drawText(ctx, 'CREDITS', 552, ay, { size: 11, color: colors.textMuted });
-  C.drawText(ctx, `₡${C.formatNumber(player.credits)}`, 768, ay, { size: 13, bold: true, color: colors.creditsGold, align: 'right' });
-  ay += 22;
+  // ─── Gear Summary ───
+  C.drawPanel(ctx, bx, by + 192, 370, 154, { title: 'GEAR LOADOUT' });
+  let gy = by + 220;
+  const slotIcons = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
+  const equipped = equipment.filter(e => e.equipped);
+  for (const slot of ['weapon', 'armor', 'helmet', 'boots', 'accessory']) {
+    const eq = equipped.find(e => EQUIPMENT[e.item_id]?.slot === slot);
+    const cfg = eq ? EQUIPMENT[eq.item_id] : null;
+    C.drawText(ctx, `${slotIcons[slot]} ${slot.toUpperCase()}`, bx + 12, gy, { size: 10, color: colors.textMuted });
+    C.drawText(ctx, cfg ? `${cfg.icon} ${cfg.name}` : '—', bx + 358, gy, {
+      size: 11, color: cfg ? C.getRarityColor(cfg.rarity) : colors.textMuted, align: 'right',
+    });
+    gy += 20;
+  }
 
-  C.drawText(ctx, 'CRYPTO', 552, ay, { size: 11, color: colors.textMuted });
-  C.drawText(ctx, `◈${C.formatNumber(player.crypto)}`, 768, ay, { size: 13, bold: true, color: colors.cryptoCyan, align: 'right' });
-  ay += 22;
+  // Total gear value
+  let gearValue = 0;
+  for (const e of equipment) { gearValue += EQUIPMENT[e.item_id]?.sellValue || 0; }
+  gy += 4;
+  C.drawText(ctx, `Total Gear Value: ${C.formatNumber(gearValue)}g`, bx + 12, gy, { size: 11, color: colors.gold });
 
-  C.drawText(ctx, 'BUSINESSES', 552, ay, { size: 11, color: colors.textMuted });
-  C.drawText(ctx, `${businesses.length}`, 768, ay, { size: 13, bold: true, color: colors.text, align: 'right' });
-  ay += 22;
-
-  C.drawText(ctx, 'AUGMENTS', 552, ay, { size: 11, color: colors.textMuted });
-  let totalAugs = 0;
-  for (const item of inventory) totalAugs += item.quantity;
-  C.drawText(ctx, `${totalAugs}`, 768, ay, { size: 13, bold: true, color: colors.secondary, align: 'right' });
-  ay += 28;
-
-  C.drawDivider(ctx, 552, ay, 216);
-  ay += 12;
-
-  // Income summary
-  let totalIncome = 0;
-  for (const b of businesses) totalIncome += b.income_rate;
-  C.drawText(ctx, 'INCOME/MIN', 552, ay, { size: 11, color: colors.textMuted });
-  C.drawText(ctx, `+₡${C.formatNumber(totalIncome)}`, 768, ay, { size: 13, bold: true, color: colors.success, align: 'right' });
-  ay += 22;
-  C.drawText(ctx, 'INCOME/HR', 552, ay, { size: 11, color: colors.textMuted });
-  C.drawText(ctx, `+₡${C.formatNumber(totalIncome * 60)}`, 768, ay, { size: 13, bold: true, color: colors.success, align: 'right' });
-
-  // ─── Business Details ───
-  C.drawPanel(ctx, 20, 266, 760, 120, { title: 'OPERATION DETAILS' });
-
-  if (businesses.length === 0) {
-    C.drawText(ctx, 'No operations established yet.', 32, 296, { size: 12, color: colors.textMuted });
+  // ─── Skills Summary ───
+  C.drawPanel(ctx, bx + 382, by + 192, 378, 154, { title: 'SKILLS' });
+  let sky = by + 220;
+  if (skills.length === 0) {
+    C.drawText(ctx, 'No skills learned yet.', bx + 394, sky, { size: 11, color: colors.textMuted });
   } else {
-    let bx = 32;
-    let by = 296;
-    for (let i = 0; i < Math.min(6, businesses.length); i++) {
-      const b = businesses[i];
-      const name = b.type.replace(/_/g, ' ').toUpperCase();
-      C.drawText(ctx, name, bx, by, { size: 11, bold: true, color: colors.text });
-      C.drawText(ctx, `Lv.${b.level}`, bx + 120, by, { size: 11, color: colors.secondary });
-      C.drawText(ctx, `+₡${C.formatNumber(b.income_rate)}/min`, bx + 170, by, { size: 11, color: colors.success });
-
-      if (i % 2 === 0) {
-        bx = 420;
-      } else {
-        bx = 32;
-        by += 20;
-      }
+    for (const sk of skills.slice(0, 6)) {
+      C.drawText(ctx, `${sk.icon} ${sk.name}`, bx + 394, sky, { size: 11, color: colors.text });
+      C.drawText(ctx, `Lv.${sk.level}`, bx + 748, sky, { size: 11, bold: true, color: colors.secondary, align: 'right' });
+      sky += 20;
     }
-  }
-
-  // Nav Bar
-  C.drawPanel(ctx, 20, 400, 760, 42);
-  const tabs = ['DASHBOARD', 'BUSINESS', 'MISSIONS', 'MARKET', 'UPGRADES', 'PROFILE'];
-  const tabW = 120;
-  for (let i = 0; i < tabs.length; i++) {
-    C.drawButton(ctx, 30 + i * tabW + i * 5, 406, tabW, 30, tabs[i], colors.primary, tabs[i] === 'PROFILE');
-  }
-
-  C.drawText(ctx, `◆ ${player.username} — NEXUS Operative since ${new Date(player.created_at * 1000).toLocaleDateString()}`, 20, 455, { size: 10, color: colors.textMuted });
-
-  for (let y = 0; y < 500; y += 3) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.02)';
-    ctx.fillRect(0, y, 800, 1);
+    if (skills.length > 6) {
+      C.drawText(ctx, `+${skills.length - 6} more`, bx + 394, sky, { size: 10, color: colors.textDim });
+    }
   }
 
   return C.canvasToBuffer(canvas);

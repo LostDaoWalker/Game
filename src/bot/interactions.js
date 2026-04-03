@@ -1,365 +1,247 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  AttachmentBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  StringSelectMenuBuilder, AttachmentBuilder,
 } from 'discord.js';
-import { getOrCreatePlayer, getPlayer } from '../core/player.js';
-import { BUSINESSES, MISSIONS, UPGRADES } from '../core/config.js';
+import {
+  getOrCreatePlayer, getPlayer, getPlayerEquipment,
+  getEquippedItems, getActiveMissions, getSkillOffers,
+} from '../core/player.js';
+import {
+  ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, EQUIPMENT_SLOTS, ECONOMY,
+} from '../core/config.js';
 import { renderView, handleAction } from '../game/engine.js';
 
-// Track which view each player is on
-const playerViews = new Map();
+// Track active views per player
+const views = new Map();
 
-// ─── Slash Command Handler ──────────────────────
+// ═══════════════════════════════════════════════
+// Slash Command — entry point
+// ═══════════════════════════════════════════════
 
 export async function handleNexusCommand(interaction) {
-  const player = getOrCreatePlayer(interaction.user.id, interaction.user.username);
-  playerViews.set(player.id, 'dashboard');
-
-  const image = renderView(player.id, 'dashboard');
-  const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-
-  await interaction.reply({
-    files: [attachment],
-    components: buildNavigation('dashboard', player.id),
-    ephemeral: false,
-  });
+  const p = getOrCreatePlayer(interaction.user.id, interaction.user.username);
+  views.set(p.id, 'dashboard');
+  await sendView(interaction, p.id, 'dashboard', null, true);
 }
 
-// ─── Button Interaction Handler ─────────────────
+// ═══════════════════════════════════════════════
+// Button Handler
+// ═══════════════════════════════════════════════
 
 export async function handleButton(interaction) {
-  const playerId = interaction.user.id;
-  const player = getPlayer(playerId);
-  if (!player) {
-    return interaction.reply({ content: '❌ Use `/nexus` to start playing.', ephemeral: true });
-  }
+  const pid = interaction.user.id;
+  if (!getPlayer(pid)) return interaction.reply({ content: '❌ Use `/nexus` first.', ephemeral: true });
 
   const [action, ...args] = interaction.customId.split(':');
 
   switch (action) {
     case 'nav': {
-      const view = args[0];
-      playerViews.set(playerId, view);
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+      views.set(pid, args[0]);
+      return sendView(interaction, pid, args[0]);
     }
-
-    case 'buy_biz': {
-      const bizType = args[0];
-      const result = handleAction(playerId, 'buy_business', { type: bizType });
-      const view = playerViews.get(playerId) || 'business';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+    case 'fight': {
+      const result = handleAction(pid, 'fight_enemy', { enemyId: args[0] });
+      return sendResult(interaction, pid, result);
     }
-
-    case 'mission': {
-      const missionAction = args[0]; // start or claim
-      const missionId = args[1];
-
-      let result;
-      if (missionAction === 'start') {
-        result = handleAction(playerId, 'start_mission', { missionId });
-      } else {
-        result = handleAction(playerId, 'claim_mission', { missionId });
-      }
-
-      const view = 'missions';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+    case 'pvp': {
+      const result = handleAction(pid, 'pvp');
+      return sendResult(interaction, pid, result);
     }
-
-    case 'crypto': {
-      const side = args[0]; // buy or sell
-      const amount = parseInt(args[1]) || 1;
-      const result = handleAction(playerId, side === 'buy' ? 'buy_crypto' : 'sell_crypto', { amount });
-      const view = 'market';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+    case 'raid': {
+      const result = handleAction(pid, 'raid', { raidId: args[0] });
+      return sendResult(interaction, pid, result);
     }
-
-    case 'buy_upg': {
-      const upgradeId = args[0];
-      const result = handleAction(playerId, 'buy_upgrade', { upgradeId });
-      const view = 'upgrades';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+    case 'heal': {
+      const result = handleAction(pid, 'heal');
+      return sendResult(interaction, pid, result);
     }
-
-    case 'collect': {
-      const result = handleAction(playerId, 'collect_income');
-      const view = playerViews.get(playerId) || 'dashboard';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
-    }
-
     case 'refresh': {
-      const view = playerViews.get(playerId) || 'dashboard';
-      const image = renderView(playerId, view);
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: '',
-        files: [attachment],
-        components: buildNavigation(view, playerId),
-      });
-      break;
+      return sendView(interaction, pid, views.get(pid) || 'dashboard');
     }
-
     default:
-      await interaction.reply({ content: '❌ Unknown action', ephemeral: true });
+      return interaction.reply({ content: '❌ Unknown', ephemeral: true });
   }
 }
 
-// ─── Select Menu Handler ────────────────────────
+// ═══════════════════════════════════════════════
+// Select Menu Handler
+// ═══════════════════════════════════════════════
 
 export async function handleSelectMenu(interaction) {
-  const playerId = interaction.user.id;
-  const player = getPlayer(playerId);
-  if (!player) {
-    return interaction.reply({ content: '❌ Use `/nexus` to start playing.', ephemeral: true });
-  }
+  const pid = interaction.user.id;
+  if (!getPlayer(pid)) return interaction.reply({ content: '❌ Use `/nexus` first.', ephemeral: true });
 
-  const [menuType] = interaction.customId.split(':');
+  const [menu] = interaction.customId.split(':');
   const value = interaction.values[0];
 
-  switch (menuType) {
-    case 'biz_select': {
-      const result = handleAction(playerId, 'buy_business', { type: value });
-      const image = renderView(playerId, 'business');
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation('business', playerId),
-      });
-      break;
+  switch (menu) {
+    case 'equip': {
+      const result = handleAction(pid, 'equip', { itemRowId: parseInt(value) });
+      return sendResult(interaction, pid, result, 'inventory');
     }
-
-    case 'mission_select': {
-      const [action, missionId] = value.split('_');
-      let result;
-      if (action === 'claim') {
-        result = handleAction(playerId, 'claim_mission', { missionId });
-      } else {
-        result = handleAction(playerId, 'start_mission', { missionId });
-      }
-      const image = renderView(playerId, 'missions');
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation('missions', playerId),
-      });
-      break;
+    case 'sell': {
+      const result = handleAction(pid, 'sell', { itemRowId: parseInt(value) });
+      return sendResult(interaction, pid, result, 'inventory');
     }
-
-    case 'upgrade_select': {
-      const result = handleAction(playerId, 'buy_upgrade', { upgradeId: value });
-      const image = renderView(playerId, 'upgrades');
-      const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
-      await interaction.update({
-        content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-        files: [attachment],
-        components: buildNavigation('upgrades', playerId),
-      });
-      break;
+    case 'pick_skill': {
+      const result = handleAction(pid, 'pick_skill', { skillId: value });
+      return sendResult(interaction, pid, result, 'skills');
+    }
+    case 'fight_select': {
+      const result = handleAction(pid, 'fight_enemy', { enemyId: value });
+      return sendResult(interaction, pid, result);
+    }
+    case 'raid_select': {
+      const result = handleAction(pid, 'raid', { raidId: value });
+      return sendResult(interaction, pid, result);
     }
   }
 }
 
-// ─── Navigation Builder ─────────────────────────
+// ═══════════════════════════════════════════════
+// Response Builders
+// ═══════════════════════════════════════════════
 
-function buildNavigation(view, playerId) {
-  const rows = [];
+async function sendView(interaction, pid, view, extra = null, isReply = false) {
+  const image = renderView(pid, view, extra);
+  const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
+  const payload = { files: [attachment], components: buildComponents(view, pid), content: '' };
 
-  // Row 1: Navigation tabs
-  const navRow = new ActionRowBuilder().addComponents(
-    makeNavBtn('DASHBOARD', 'nav:dashboard', view === 'dashboard', ButtonStyle.Primary),
-    makeNavBtn('BUSINESS', 'nav:business', view === 'business', ButtonStyle.Primary),
-    makeNavBtn('MISSIONS', 'nav:missions', view === 'missions', ButtonStyle.Primary),
-    makeNavBtn('MARKET', 'nav:market', view === 'market', ButtonStyle.Primary),
-    makeNavBtn('UPGRADES', 'nav:upgrades', view === 'upgrades', ButtonStyle.Primary),
-  );
-  rows.push(navRow);
+  if (isReply) await interaction.reply(payload);
+  else await interaction.update(payload);
+}
 
-  // Row 2: Secondary nav + utility
-  const utilRow = new ActionRowBuilder().addComponents(
-    makeNavBtn('PROFILE', 'nav:profile', view === 'profile', ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('collect').setLabel('💰 Collect').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('refresh').setLabel('🔄 Refresh').setStyle(ButtonStyle.Secondary),
-  );
-  rows.push(utilRow);
+async function sendResult(interaction, pid, result, viewOverride) {
+  const view = viewOverride || result.view || views.get(pid) || 'dashboard';
+  views.set(pid, view);
+  const image = renderView(pid, view, result.extra || null);
+  const attachment = new AttachmentBuilder(image, { name: 'nexus.png' });
 
-  // Row 3-5: Context-specific actions
+  await interaction.update({
+    content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
+    files: [attachment],
+    components: buildComponents(view, pid),
+  });
+}
+
+// ═══════════════════════════════════════════════
+// Component Builders (buttons + menus per view)
+// ═══════════════════════════════════════════════
+
+function buildComponents(view, pid) {
+  const rows = [buildNavRow(view), buildUtilRow(view)];
+
   switch (view) {
-    case 'business':
-      rows.push(buildBusinessSelect(playerId));
-      break;
-    case 'missions':
-      rows.push(buildMissionSelect(playerId));
-      break;
-    case 'market':
-      rows.push(buildCryptoButtons('buy'));
-      rows.push(buildCryptoButtons('sell'));
-      break;
-    case 'upgrades':
-      rows.push(buildUpgradeSelect(playerId));
-      break;
+    case 'fight':     rows.push(buildFightSelect(pid)); break;
+    case 'raids':     rows.push(buildRaidSelect(pid)); break;
+    case 'inventory': rows.push(buildEquipSelect(pid)); break;
+    case 'skills':    { const r = buildSkillSelect(pid); if (r) rows.push(r); break; }
   }
 
-  return rows;
+  return rows.filter(Boolean);
 }
 
-function makeNavBtn(label, id, active, style) {
-  return new ButtonBuilder()
-    .setCustomId(id)
-    .setLabel(label)
-    .setStyle(active ? ButtonStyle.Success : style)
-    .setDisabled(active);
+function buildNavRow(active) {
+  const tabs = [
+    ['DASHBOARD', 'nav:dashboard'], ['FIGHT', 'nav:fight'], ['RAIDS', 'nav:raids'],
+    ['INVENTORY', 'nav:inventory'], ['SKILLS', 'nav:skills'],
+  ];
+  return new ActionRowBuilder().addComponents(
+    ...tabs.map(([label, id]) =>
+      new ButtonBuilder()
+        .setCustomId(id)
+        .setLabel(label)
+        .setStyle(active === id.split(':')[1] ? ButtonStyle.Success : ButtonStyle.Primary)
+        .setDisabled(active === id.split(':')[1])
+    ),
+  );
 }
 
-function buildBusinessSelect(playerId) {
-  const options = Object.entries(BUSINESSES).map(([key, config]) => ({
-    label: `${config.icon} ${config.name}`,
-    description: config.description.slice(0, 50),
-    value: key,
-  }));
-
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('biz_select')
-    .setPlaceholder('Buy / Upgrade a business...')
-    .addOptions(options);
-
-  return new ActionRowBuilder().addComponents(select);
+function buildUtilRow(view) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE')
+      .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setDisabled(view === 'profile'),
+    new ButtonBuilder().setCustomId('pvp').setLabel('⚔️ PVP Arena').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary),
+  );
 }
 
-function buildMissionSelect(playerId) {
-  const player = getPlayer(playerId);
-  const now = Math.floor(Date.now() / 1000);
-  const options = [];
-  const activeMissions = player ? getActiveMissionsMap(playerId) : {};
-
-  for (const [key, config] of Object.entries(MISSIONS)) {
-    if (player.level < config.minLevel) continue;
-    const am = activeMissions[key];
-    if (am && am.completes_at <= now) {
-      options.push({
-        label: `✅ Claim: ${config.icon} ${config.name}`,
-        description: `Claim rewards!`,
-        value: `claim_${key}`,
-      });
-    } else if (!am) {
-      options.push({
-        label: `${config.icon} ${config.name}`,
-        description: `⚡${config.energyCost} | ${formatDur(config.duration)} | ₡${config.rewards.credits[0]}-${config.rewards.credits[1]}`,
-        value: `start_${key}`,
-      });
-    }
-  }
+function buildFightSelect(pid) {
+  const player = getPlayer(pid);
+  const options = Object.entries(ENEMIES)
+    .filter(([, e]) => player.level >= e.minLevel)
+    .map(([id, e]) => ({
+      label: `${e.icon} ${e.name}`,
+      description: `Lv.${e.minLevel}+ | ⚡${ZONES[e.zone]?.staminaCost || 1} | ${e.xp[0]}-${e.xp[1]}xp`,
+      value: id,
+    }));
 
   if (options.length === 0) {
-    options.push({
-      label: 'No missions available',
-      description: 'All missions are in progress',
-      value: 'none',
-    });
+    options.push({ label: 'No enemies available', description: 'Level up to unlock zones', value: 'none' });
   }
 
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('mission_select')
-    .setPlaceholder('Start or claim a mission...')
-    .addOptions(options.slice(0, 25));
-
-  return new ActionRowBuilder().addComponents(select);
-}
-
-function buildCryptoButtons(side) {
-  const amounts = [1, 5, 10, 50];
-  const style = side === 'buy' ? ButtonStyle.Success : ButtonStyle.Danger;
-  const label = side === 'buy' ? 'Buy' : 'Sell';
-
-  const row = new ActionRowBuilder();
-  for (const amount of amounts) {
-    row.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`crypto:${side}:${amount}`)
-        .setLabel(`${label} ${amount}x`)
-        .setStyle(style)
-    );
-  }
-  row.addComponents(
-    new ButtonBuilder()
-      .setCustomId(`crypto:${side}:100`)
-      .setLabel(`${label} 100x`)
-      .setStyle(style)
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('fight_select').setPlaceholder('Choose an enemy to fight...').addOptions(options.slice(0, 25)),
   );
-  return row;
 }
 
-function buildUpgradeSelect(playerId) {
-  const options = Object.entries(UPGRADES).map(([key, config]) => ({
-    label: `${config.icon} ${config.name} (₡${config.cost})`,
-    description: config.description,
-    value: key,
-  }));
+function buildRaidSelect(pid) {
+  const player = getPlayer(pid);
+  const options = Object.entries(RAIDS)
+    .filter(([, r]) => player.level >= r.minLevel)
+    .map(([id, r]) => ({
+      label: `${r.icon} ${r.name}`,
+      description: `⚡${r.staminaCost} | ❤${r.hp} HP | ${r.rewards.gold[0]}-${r.rewards.gold[1]}g`,
+      value: id,
+    }));
 
-  const select = new StringSelectMenuBuilder()
-    .setCustomId('upgrade_select')
-    .setPlaceholder('Install an augmentation...')
-    .addOptions(options);
+  if (options.length === 0) {
+    options.push({ label: 'No raids available', description: 'Level up to unlock raids', value: 'none' });
+  }
 
-  return new ActionRowBuilder().addComponents(select);
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('raid_select').setPlaceholder('Choose a raid boss...').addOptions(options.slice(0, 25)),
+  );
 }
 
-// Helpers
-import { getActiveMissions } from '../core/player.js';
+function buildEquipSelect(pid) {
+  const equipment = getPlayerEquipment(pid);
+  const unequipped = equipment.filter(e => !e.equipped);
+  const options = unequipped.slice(0, 24).map(e => {
+    const cfg = EQUIPMENT[e.item_id];
+    if (!cfg) return null;
+    return {
+      label: `${cfg.icon} ${cfg.name} (${cfg.slot})`,
+      description: Object.entries(cfg.stats).map(([k, v]) => `+${v} ${k}`).join(', '),
+      value: `${e.id}`,
+    };
+  }).filter(Boolean);
 
-function getActiveMissionsMap(playerId) {
-  const missions = getActiveMissions(playerId);
-  const map = {};
-  for (const m of missions) map[m.mission_id] = m;
-  return map;
+  if (options.length === 0) {
+    options.push({ label: 'No items to equip', description: 'Fight enemies for gear drops', value: 'none' });
+  }
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('equip').setPlaceholder('Equip an item...').addOptions(options.slice(0, 25)),
+  );
 }
 
-function formatDur(s) {
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  return `${Math.floor(s / 3600)}h`;
+function buildSkillSelect(pid) {
+  const player = getPlayer(pid);
+  if (!player || player.pending_skill_picks <= 0) return null;
+
+  const offers = getSkillOffers(pid);
+  if (!offers) return null;
+
+  const options = [offers.skill1, offers.skill2, offers.skill3]
+    .map(id => SKILLS[id] ? { label: `${SKILLS[id].icon} ${SKILLS[id].name}`, description: SKILLS[id].description.slice(0, 50), value: id } : null)
+    .filter(Boolean);
+
+  if (options.length === 0) return null;
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder().setCustomId('pick_skill').setPlaceholder('🎯 Pick a skill...').addOptions(options),
+  );
 }
