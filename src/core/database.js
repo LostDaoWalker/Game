@@ -51,9 +51,19 @@ export function getDb() {
   return db;
 }
 
-export function sql(query) {
-  if (!cache.has(query)) cache.set(query, getDb().prepare(query));
-  return cache.get(query);
-}
-
+export function sql(q) { let s = cache.get(q); if (!s) { s = getDb().prepare(q); cache.set(q, s); } return s; }
 export function tx(fn) { return getDb().transaction(fn)(); }
+
+// ── Per-shape update cache — avoids rebuilding SQL strings on every upd() call ──
+const updCache = new Map();
+export function upd(id, f) {
+  const keys = Object.keys(f).sort();
+  const shape = keys.join(',');
+  let stmt = updCache.get(shape);
+  if (!stmt) {
+    const sets = keys.map(k => `${k}=@${k}`).join(',');
+    stmt = getDb().prepare(`UPDATE players SET ${sets},last_active=unixepoch() WHERE id=@id`);
+    updCache.set(shape, stmt);
+  }
+  stmt.run({ ...f, id });
+}

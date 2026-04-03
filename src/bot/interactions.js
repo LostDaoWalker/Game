@@ -1,9 +1,58 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
-import { getOrCreate, get, getEquip, getOffers } from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ECO } from '../core/config.js';
-import { renderView, handleAction } from '../game/engine.js';
+import * as P from '../core/player.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT } from '../core/config.js';
+import { renderDashboard } from '../rendering/views/dashboard.js';
+import { renderFight } from '../rendering/views/fight.js';
+import { renderRaids } from '../rendering/views/raids.js';
+import { renderInventory } from '../rendering/views/inventory.js';
+import { renderSkills } from '../rendering/views/skills.js';
+import { renderProfile } from '../rendering/views/profile.js';
 
 const views = new Map();
+
+// ── View + Action Engine (inlined — no separate module) ──
+
+const equipCfgs = pid => P.getEquipped(pid).map(e => EQUIPMENT[e.item_id]).filter(Boolean);
+const skillCfgs = pid => P.getSkills(pid).map(s => { const c = SKILLS[s.skill_id]; return c ? { ...c, level: s.level, id: s.skill_id } : null; }).filter(Boolean);
+
+function renderView(pid, view, extra) {
+  const p = P.get(pid); if (!p) return null;
+  P.regenStamina(p); P.calcNetworth(P.get(pid));
+  const pl = P.get(pid);
+  const V = {
+    dashboard: () => renderDashboard(pl, equipCfgs(pid), skillCfgs(pid), P.getLog(pid), P.getLeaderboard()),
+    fight: () => renderFight(pl, extra), raids: () => renderRaids(pl, extra),
+    inventory: () => renderInventory(pl, P.getEquip(pid), P.getEquipped(pid)),
+    skills: () => renderSkills(pl, skillCfgs(pid), P.getOffers(pid)),
+    profile: () => renderProfile(pl, P.getEquip(pid), skillCfgs(pid), (P.getLeaderboard(100).findIndex(e => e.id === pid) + 1) || 99),
+  };
+  return (V[view] || V.dashboard)();
+}
+
+function doAction(pid, action, args = {}) {
+  const p = P.get(pid); if (!p) return { success: false, message: 'No player' };
+  P.regenStamina(p);
+  const fmtR = (r, view) => {
+    if (!r.success) return r;
+    const name = r.enemy?.name || r.boss?.name || r.opponent?.name || '?';
+    let m = r.won ? `⚔️ Beat ${name}! +${r.gold}g +${r.xp}xp` : `💀 Lost to ${name}. +${r.xp}xp`;
+    if (r.lootItem) m += ` 🎁 ${r.lootItem.icon} ${r.lootItem.name}!`;
+    if (r.leveled) m += ` 🎉 Level ${r.newLevel}!`;
+    return { success: true, message: m, view, extra: r };
+  };
+  switch (action) {
+    case 'fight_enemy': return fmtR(P.fightEnemy(pid, args.enemyId), 'fight');
+    case 'pvp': return fmtR(P.pvpFight(pid), 'fight');
+    case 'raid': return fmtR(P.fightRaid(pid, args.raidId), 'raids');
+    case 'equip': { const r = P.equipItem(pid, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; }
+    case 'sell': { const r = P.sellItem(pid, args.itemRowId); return r.success ? { success: true, message: `Sold ${r.item.icon} ${r.item.name} for ${r.gold}g`, view: 'inventory' } : r; }
+    case 'pick_skill': { const r = P.pickSkill(pid, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name} ${r.newLevel > 1 ? `→ Lv.${r.newLevel}` : 'learned'}!`, view: 'skills' } : r; }
+    case 'heal': { const r = P.heal(pid); return r.success ? { success: true, message: `Healed ${r.healed} HP (-${r.cost}g)`, view: 'fight' } : r; }
+    default: return { success: false, message: 'Unknown' };
+  }
+}
+
+// ── Discord Handlers ──
 
 function selectMenu(id, placeholder, opts) {
   if (!opts.length) opts = [{ label: 'Nothing available', description: '-', value: 'none' }];
@@ -11,60 +60,52 @@ function selectMenu(id, placeholder, opts) {
 }
 
 async function send(i, pid, view, extra, reply) {
-  const img = renderView(pid, view, extra);
-  const payload = { files: [new AttachmentBuilder(img, { name: 'nexus.png' })], components: buildUI(view, pid), content: '' };
+  const payload = { files: [new AttachmentBuilder(renderView(pid, view, extra), { name: 'nexus.png' })], components: buildUI(view, pid), content: '' };
   reply ? await i.reply(payload) : await i.update(payload);
 }
 
 async function sendResult(i, pid, r, fallback) {
   const v = r.view || fallback || views.get(pid) || 'dashboard'; views.set(pid, v);
-  const img = renderView(pid, v, r.extra || null);
-  await i.update({ content: r.success ? `✅ ${r.message}` : `❌ ${r.message}`, files: [new AttachmentBuilder(img, { name: 'nexus.png' })], components: buildUI(v, pid) });
+  await i.update({ content: r.success ? `✅ ${r.message}` : `❌ ${r.message}`, files: [new AttachmentBuilder(renderView(pid, v, r.extra || null), { name: 'nexus.png' })], components: buildUI(v, pid) });
 }
 
-// ── Handlers ──
-
-export async function handleNexusCommand(i) { getOrCreate(i.user.id, i.user.username); views.set(i.user.id, 'dashboard'); await send(i, i.user.id, 'dashboard', null, true); }
+export async function handleNexusCommand(i) { P.getOrCreate(i.user.id, i.user.username); views.set(i.user.id, 'dashboard'); await send(i, i.user.id, 'dashboard', null, true); }
 
 export async function handleButton(i) {
-  const pid = i.user.id; if (!get(pid)) return i.reply({ content: '❌ Use `/nexus`', ephemeral: true });
+  const pid = i.user.id; if (!P.get(pid)) return i.reply({ content: '❌ Use `/nexus`', ephemeral: true });
   const [a, ...args] = i.customId.split(':');
   if (a === 'nav') { views.set(pid, args[0]); return send(i, pid, args[0]); }
   if (a === 'refresh') return send(i, pid, views.get(pid) || 'dashboard');
-  return sendResult(i, pid, handleAction(pid, a === 'pvp' ? 'pvp' : a === 'heal' ? 'heal' : a, a === 'fight' ? { enemyId: args[0] } : a === 'raid' ? { raidId: args[0] } : {}));
+  return sendResult(i, pid, doAction(pid, a === 'pvp' ? 'pvp' : a === 'heal' ? 'heal' : a, a === 'fight' ? { enemyId: args[0] } : a === 'raid' ? { raidId: args[0] } : {}));
 }
 
 export async function handleSelectMenu(i) {
   const pid = i.user.id, [menu] = i.customId.split(':'), val = i.values[0];
-  if (!get(pid)) return i.reply({ content: '❌ Use `/nexus`', ephemeral: true });
+  if (!P.get(pid)) return i.reply({ content: '❌ Use `/nexus`', ephemeral: true });
   const map = { fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }], equip: ['equip', { itemRowId: +val }], sell: ['sell', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }] };
   const [action, args] = map[menu] || ['unknown', {}];
-  return sendResult(i, pid, handleAction(pid, action, args), menu === 'equip' || menu === 'sell' ? 'inventory' : menu === 'pick_skill' ? 'skills' : undefined);
+  return sendResult(i, pid, doAction(pid, action, args), menu === 'equip' || menu === 'sell' ? 'inventory' : menu === 'pick_skill' ? 'skills' : undefined);
 }
 
 // ── UI Builder ──
-
 function buildUI(view, pid) {
   const rows = [
-    new ActionRowBuilder().addComponents(
-      ...['DASHBOARD', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS'].map(t =>
-        new ButtonBuilder().setCustomId(`nav:${t.toLowerCase()}`).setLabel(t).setStyle(view === t.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(view === t.toLowerCase()))
-    ),
+    new ActionRowBuilder().addComponents(...['DASHBOARD', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS'].map(t =>
+      new ButtonBuilder().setCustomId(`nav:${t.toLowerCase()}`).setLabel(t).setStyle(view === t.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(view === t.toLowerCase()))),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE').setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'profile'),
       new ButtonBuilder().setCustomId('pvp').setLabel('⚔️ PVP').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary),
-    ),
+      new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary)),
   ];
-  const p = get(pid);
+  const p = P.get(pid);
   if (view === 'fight' && p) rows.push(selectMenu('fight_select', 'Choose enemy...',
     Object.entries(ENEMIES).filter(([, e]) => p.level >= e.minLevel).map(([id, e]) => ({ label: `${e.icon} ${e.name}`, description: `Lv.${e.minLevel}+ | ⚡${ZONES[e.zone]?.staminaCost || 1}`, value: id }))));
   if (view === 'raids' && p) rows.push(selectMenu('raid_select', 'Choose boss...',
     Object.entries(RAIDS).filter(([, r]) => p.level >= r.minLevel).map(([id, r]) => ({ label: `${r.icon} ${r.name}`, description: `⚡${r.staminaCost} | ❤${r.hp}`, value: id }))));
   if (view === 'inventory' && p) rows.push(selectMenu('equip', 'Equip item...',
-    getEquip(pid).filter(e => !e.equipped).slice(0, 24).map(e => { const c = EQUIPMENT[e.item_id]; return c ? { label: `${c.icon} ${c.name} (${c.slot})`, description: Object.entries(c.stats).map(([k, v]) => `+${v} ${k}`).join(', '), value: `${e.id}` } : null; }).filter(Boolean)));
-  if (view === 'skills' && p?.pending_skill_picks > 0) { const o = getOffers(pid); if (o) rows.push(selectMenu('pick_skill', '🎯 Pick skill...',
+    P.getEquip(pid).filter(e => !e.equipped).slice(0, 24).map(e => { const c = EQUIPMENT[e.item_id]; return c ? { label: `${c.icon} ${c.name} (${c.slot})`, description: Object.entries(c.stats).map(([k, v]) => `+${v} ${k}`).join(', '), value: `${e.id}` } : null; }).filter(Boolean)));
+  if (view === 'skills' && p?.pending_skill_picks > 0) { const o = P.getOffers(pid); if (o) rows.push(selectMenu('pick_skill', '🎯 Pick skill...',
     [o.skill1, o.skill2, o.skill3].map(id => SKILLS[id] ? { label: `${SKILLS[id].icon} ${SKILLS[id].name}`, description: SKILLS[id].description.slice(0, 50), value: id } : null).filter(Boolean))); }
   return rows;
 }
