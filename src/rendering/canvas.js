@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { THEME, CANVAS, RARITIES } from '../core/config.js';
+import { THEME, CANVAS, RARITIES, TABS } from '../core/config.js';
 const C = THEME.colors, W = CANVAS.width, H = CANVAS.height;
 
 export { C as colors };
@@ -106,8 +106,6 @@ export function rr(ctx, x, y, w, h, r) {
 }
 
 // ── Layout ──
-const TABS = ['DASHBOARD', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS', 'PROFILE'];
-
 export function layout(player, tab, opts = {}) {
   const { canvas, ctx } = create(); bg(ctx);
   title(ctx, '◆ NEXUS', 20, 14, 22);

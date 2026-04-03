@@ -18,7 +18,7 @@ client.on(Events.InteractionCreate, async i => {
   } catch (e) {
     console.error(e);
     const r = { content: '❌ Error. Try again.', ephemeral: true };
-    try { i.replied || i.deferred ? await i.followUp(r) : await i.reply(r); } catch {}
+    try { i.replied || i.deferred ? await i.followUp(r) : await i.reply(r); } catch (followUpErr) { console.error('Failed to send error response:', followUpErr.message); }
   }
 });
 

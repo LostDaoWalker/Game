@@ -40,7 +40,7 @@ function drawZones(ctx, bx, by, p) {
 }
 
 export function drawResult(ctx, bx, by, bw, player, r) {
-  const won = r.won, name = r.enemy?.name || r.boss?.name || r.opponent?.name || '?';
+  const won = r.won, name = r.foe?.name || '?';
   R.panel(ctx, bx, by, bw, 48, { glow: true, gc: won ? C.success : C.danger });
   R.txt(ctx, won ? '⚔️  VICTORY' : '💀  DEFEATED', bx + bw / 2, by + 6, { s: 24, b: true, c: won ? C.success : C.danger, a: 'center' });
   R.txt(ctx, `vs ${name}`, bx + bw / 2, by + 32, { s: 12, c: C.textDim, a: 'center' });

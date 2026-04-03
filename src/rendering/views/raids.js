@@ -21,7 +21,7 @@ export function renderRaids(player, result) {
     R.txt(ctx, rd.description, x + 12, y + 30, { s: 10, c: C.textDim, mw: 344 });
     R.txt(ctx, `❤${R.fmt(rd.hp)} ⚔${rd.atk} 🛡${rd.def} ⚡${rd.spd}`, x + 12, y + 48, { s: 11, c: C.text });
     R.divider(ctx, x + 12, y + 66, 344);
-    const [mg, xg] = rd.rewards.gold, [mx, xx] = rd.rewards.xp;
+    const [mg, xg] = rd.gold, [mx, xx] = rd.xp;
     R.txt(ctx, `🪙${R.fmt(mg)}-${R.fmt(xg)}  ✨${R.fmt(mx)}-${R.fmt(xx)}xp`, x + 12, y + 74, { s: 10, c: C.gold });
     R.txt(ctx, `${(rd.lootChance * 100) | 0}% loot`, x + 356, y + 74, { s: 10, c: C.accent, a: 'right' });
     let lx = x + 12;

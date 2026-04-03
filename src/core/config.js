@@ -1,4 +1,5 @@
-// NEXUS — Game Data (lithic)
+// NEXUS — Game Data
+// Single source of truth for all game constants and content tables.
 
 export const THEME = {
   name: 'NEXUS', tagline: 'Fight. Loot. Dominate.',
@@ -20,6 +21,9 @@ export const RARITIES = {
 
 export const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
 export const EQUIPMENT_SLOTS = Object.keys(SLOT_ICONS);
+
+// SSOT: nav tabs used by both canvas layout and Discord buttons
+export const TABS = ['DASHBOARD', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS', 'PROFILE'];
 
 // [id, name, slot, rarity, icon, stats, sellValue, dropLevel]
 const EQ = [
@@ -54,7 +58,7 @@ const EQ = [
   ['heart_of_dragon','Heart of the Dragon','accessory','legendary','❤️‍🔥',{attack:20,defense:15,hp:80,strength:10,speed:10},6000,20],
 ];
 export const EQUIPMENT = Object.fromEntries(EQ.map(([id,name,slot,rarity,icon,stats,sellValue,dropLevel]) =>
-  [id, { name, slot, rarity, icon, stats, sellValue, dropLevel }]));
+  [id, Object.freeze({ name, slot, rarity, icon, stats: Object.freeze(stats), sellValue, dropLevel })]));
 
 // [id, name, icon, type, description, effect, maxLevel]
 const SK = [
@@ -74,7 +78,7 @@ const SK = [
   ['intimidate','Intimidate','👊','utility','Enemy starts -10% ATK',{enemyAtkReduction:.1},3],
 ];
 export const SKILLS = Object.fromEntries(SK.map(([id,name,icon,type,description,effect,maxLevel]) =>
-  [id, { name, icon, type, description, effect, maxLevel }]));
+  [id, Object.freeze({ name, icon, type, description, effect: Object.freeze(effect), maxLevel })]));
 
 // [id, name, icon, zone, hp, atk, def, spd, scaling, xpRange, goldRange, minLevel]
 const EN = [
@@ -92,8 +96,9 @@ const EN = [
   ['elder_wyrm','Elder Wyrm','🐲','dragons_lair',350,50,30,14,1.25,[200,350],[180,300],20],
 ];
 export const ENEMIES = Object.fromEntries(EN.map(([id,name,icon,zone,baseHp,baseAtk,baseDef,baseSpd,scaling,xp,gold,minLevel]) =>
-  [id, { name, icon, zone, baseHp, baseAtk, baseDef, baseSpd, scaling, xp, gold, minLevel }]));
+  [id, Object.freeze({ name, icon, zone, baseHp, baseAtk, baseDef, baseSpd, scaling, xp, gold, minLevel })]));
 
+// Flattened rewards (no nested .rewards.xp — Law of Demeter)
 // [id, name, icon, desc, hp, atk, def, spd, minLevel, staminaCost, xpRange, goldRange, lootTable, lootChance]
 const RD = [
   ['sewer_king','The Sewer King','👑🐀','Mutant rat lord',500,20,15,6,5,3,[100,200],[150,300],['steel_bat','chain_mail','iron_helm','combat_boots'],.5],
@@ -102,21 +107,21 @@ const RD = [
   ['ancient_dragon','Ancient Dragon','🐉🔥','Legendary beast',5000,80,55,12,20,10,[1000,2000],[2000,4000],['dragon_fang','dragon_scale','void_crown','heart_of_dragon','void_scythe'],.25],
 ];
 export const RAIDS = Object.fromEntries(RD.map(([id,name,icon,description,hp,atk,def,spd,minLevel,staminaCost,xp,gold,lootTable,lootChance]) =>
-  [id, { name, icon, description, hp, atk, def, spd, minLevel, staminaCost, rewards:{xp,gold}, lootTable, lootChance }]));
+  [id, Object.freeze({ name, icon, description, hp, atk, def, spd, minLevel, staminaCost, xp, gold, lootTable: Object.freeze(lootTable), lootChance })]));
 
-export const ZONES = {
+export const ZONES = Object.freeze({
   streets:      { name: 'The Streets',   icon: '🏙️', minLevel: 1,  staminaCost: 1 },
   underground:  { name: 'Underground',   icon: '🕳️', minLevel: 5,  staminaCost: 2 },
   warzone:      { name: 'The Warzone',   icon: '💣', minLevel: 10, staminaCost: 3 },
   dragons_lair: { name: "Dragon's Lair", icon: '🐉', minLevel: 16, staminaCost: 4 },
-};
+});
 
-export const LEVEL = { xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1, max: 30 };
+export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1, max: 30 });
 
-export const ECO = {
+export const ECO = Object.freeze({
   startGold: 100, maxStamina: 10, staminaRegen: 300,
   pvpCost: 2, healPerHp: 1, sellMult: 0.4,
-  networth: { gold: 1, equip: 1.5, level: 100 },
-};
+  networth: Object.freeze({ gold: 1, equip: 1.5, level: 100 }),
+});
 
-export const CANVAS = { width: 800, height: 500 };
+export const CANVAS = Object.freeze({ width: 800, height: 500 });

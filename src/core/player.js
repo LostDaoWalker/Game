@@ -3,6 +3,18 @@ import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES } from '
 
 const rand = (a, b) => (Math.random() * (b - a + 1) | 0) + a;
 
+// Unbiased Fisher-Yates shuffle
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// Clamp HP to [0, max] — invalid states unrepresentable
+const clampHp = (hp, max) => Math.max(0, Math.min(max, hp));
+
 // ── CRUD ──
 export const get = id => sql('SELECT * FROM players WHERE id=?').get(id);
 
@@ -41,11 +53,17 @@ export function addXp(p, amount) {
 export const getEquip = pid => sql('SELECT * FROM equipment WHERE player_id=?').all(pid);
 export const getEquipped = pid => sql('SELECT * FROM equipment WHERE player_id=? AND equipped=1').all(pid);
 
-export function equipItem(pid, rowId) {
+function lookupItem(rowId, pid) {
   const item = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, pid);
-  if (!item) return { success: false, error: 'Not found' };
+  if (!item) return { err: 'Not found' };
   const cfg = EQUIPMENT[item.item_id];
-  if (!cfg) return { success: false, error: 'Unknown' };
+  if (!cfg) return { err: 'Unknown item' };
+  return { item, cfg };
+}
+
+export function equipItem(pid, rowId) {
+  const { item, cfg, err } = lookupItem(rowId, pid);
+  if (err) return { success: false, error: err };
   return tx(() => {
     for (const eq of getEquipped(pid)) if (EQUIPMENT[eq.item_id]?.slot === cfg.slot) sql('UPDATE equipment SET equipped=0 WHERE id=?').run(eq.id);
     sql('UPDATE equipment SET equipped=1 WHERE id=?').run(rowId);
@@ -54,11 +72,10 @@ export function equipItem(pid, rowId) {
 }
 
 export function sellItem(pid, rowId) {
-  const item = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, pid);
-  if (!item) return { success: false, error: 'Not found' };
+  const { item, cfg, err } = lookupItem(rowId, pid);
+  if (err) return { success: false, error: err };
   if (item.equipped) return { success: false, error: 'Unequip first' };
-  const cfg = EQUIPMENT[item.item_id];
-  const gold = (cfg?.sellValue || 0) * ECO.sellMult | 0;
+  const gold = (cfg.sellValue * ECO.sellMult) | 0;
   return tx(() => {
     sql('DELETE FROM equipment WHERE id=?').run(rowId);
     const p = get(pid); upd(pid, { gold: p.gold + gold });
@@ -68,7 +85,10 @@ export function sellItem(pid, rowId) {
 
 function equipBonuses(pid) {
   const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
-  for (const eq of getEquipped(pid)) { const c = EQUIPMENT[eq.item_id]; if (c) for (const k in c.stats) if (k in b) b[k] += c.stats[k]; }
+  for (const eq of getEquipped(pid)) {
+    const c = EQUIPMENT[eq.item_id];
+    if (c) for (const k in c.stats) if (k in b) b[k] += c.stats[k];
+  }
   return b;
 }
 
@@ -76,10 +96,9 @@ function equipBonuses(pid) {
 export const getSkills = pid => sql('SELECT * FROM skills WHERE player_id=?').all(pid);
 export const getOffers = pid => sql('SELECT * FROM skill_offers WHERE player_id=?').get(pid);
 
-// Lightweight: only stores {level} per skill_id key, reads config on demand
 function skillMap(pid) {
   const m = {};
-  for (const s of getSkills(pid)) { const c = SKILLS[s.skill_id]; if (c) m[s.skill_id] = { level: s.level }; }
+  for (const s of getSkills(pid)) if (SKILLS[s.skill_id]) m[s.skill_id] = { level: s.level };
   return m;
 }
 
@@ -87,7 +106,7 @@ function genOffers(pid) {
   const maxed = new Set(getSkills(pid).filter(s => { const c = SKILLS[s.skill_id]; return c && s.level >= c.maxLevel; }).map(s => s.skill_id));
   const avail = Object.keys(SKILLS).filter(k => !maxed.has(k));
   if (avail.length < 3) return;
-  const picks = avail.sort(() => Math.random() - .5).slice(0, 3);
+  const picks = shuffle([...avail]).slice(0, 3);
   sql('INSERT OR REPLACE INTO skill_offers(player_id,skill1,skill2,skill3) VALUES(?,?,?,?)').run(pid, ...picks);
 }
 
@@ -110,112 +129,137 @@ export function pickSkill(pid, skillId) {
 }
 
 // ── Combat Sim ──
-function eff(pid) {
+function effectiveStats(pid) {
   const p = get(pid), b = equipBonuses(pid);
   return { hp: p.hp, maxHp: p.max_hp + b.hp, attack: p.attack + b.attack, defense: p.defense + b.defense, speed: p.speed + b.speed, strength: p.strength + b.strength };
 }
 
-function sk(sm, id) { return sm[id]?.level || 0; }
+const skLv = (sm, id) => sm[id]?.level || 0;
 
-function simulate(atk, def, as, ds) {
+function simulate(atk, def, attackerSkills, defenderSkills) {
   let aHp = atk.maxHp || atk.hp, dHp = def.maxHp || def.hp;
   const aMax = aHp, dMax = dHp;
   let aAtk = atk.attack + (atk.strength >> 1), dAtk = def.attack + ((def.strength || 0) >> 1);
   const aDef = atk.defense, dDef = def.defense;
-  let aLS = sk(as, 'last_stand') > 0, dLS = sk(ds, 'last_stand') > 0;
+  let aLS = skLv(attackerSkills, 'last_stand') > 0, dLS = skLv(defenderSkills, 'last_stand') > 0;
   let aPsn = 0, dPsn = 0;
   const log = [];
 
-  const intim_a = sk(as, 'intimidate'), intim_d = sk(ds, 'intimidate');
-  if (intim_a) { dAtk = dAtk * (1 - intim_a * .1) | 0; log.push({ text: '👊 Intimidate!', side: 'attacker' }); }
-  if (intim_d) aAtk = aAtk * (1 - intim_d * .1) | 0;
+  const intA = skLv(attackerSkills, 'intimidate'), intD = skLv(defenderSkills, 'intimidate');
+  if (intA) { dAtk = dAtk * (1 - intA * .1) | 0; log.push({ text: '👊 Intimidate!', side: 'attacker' }); }
+  if (intD) aAtk = aAtk * (1 - intD * .1) | 0;
 
   const aFirst = atk.speed >= (def.speed || 0);
   for (let r = 0; r < 30 && aHp > 0 && dHp > 0; r++) {
     for (const isA of [aFirst, !aFirst]) {
-      const ms = isA ? as : ds, ts = isA ? ds : as;
-      let mAtk = isA ? aAtk : dAtk, tDef = isA ? dDef : aDef;
+      const mySk = isA ? attackerSkills : defenderSkills;
+      const foeSkills = isA ? defenderSkills : attackerSkills;
+      let mAtk = isA ? aAtk : dAtk, fDef = isA ? dDef : aDef;
       const mMax = isA ? aMax : dMax;
-      let mHp = isA ? aHp : dHp, eHp = isA ? dHp : aHp;
-      if (mHp <= 0 || eHp <= 0) continue;
-      const mSide = isA ? 'attacker' : 'defender', tSide = isA ? 'defender' : 'attacker';
+      let mHp = isA ? aHp : dHp, fHp = isA ? dHp : aHp;
+      if (mHp <= 0 || fHp <= 0) continue;
+      const mSide = isA ? 'attacker' : 'defender';
+      const fSide = isA ? 'defender' : 'attacker';
 
-      // Poison
       const psn = isA ? aPsn : dPsn;
-      if (psn > 0) { const d = Math.max(1, mMax * .05 | 0); mHp -= d; if (isA) { aPsn--; aHp = mHp; } else { dPsn--; dHp = mHp; } log.push({ text: `🧪 ${d} poison`, side: mSide }); if (mHp <= 0) continue; }
-      // Regen
-      const regen = sk(ms, 'regeneration');
-      if (regen) { mHp = Math.min(mMax, mHp + (mMax * regen * .05 | 0)); if (isA) aHp = mHp; else dHp = mHp; }
-      // Dodge
-      const dodge = sk(ts, 'dodge_master');
-      if (dodge && Math.random() < dodge * .12) { log.push({ text: '💨 Dodged!', side: tSide }); continue; }
-      // Berserker
-      const berserk = sk(ms, 'berserker_rage');
-      if (berserk && mHp / mMax < .3) mAtk = mAtk * berserk * 1.5 | 0;
-      // Armor break
-      const armorBr = sk(ms, 'armor_break');
-      if (armorBr) tDef = tDef * (1 - armorBr * .25) | 0;
+      if (psn > 0) {
+        const d = Math.max(1, mMax * .05 | 0);
+        mHp -= d;
+        if (isA) { aPsn--; aHp = mHp; } else { dPsn--; dHp = mHp; }
+        log.push({ text: `🧪 ${d} poison`, side: mSide });
+        if (mHp <= 0) continue;
+      }
 
-      let dmg = Math.max(1, mAtk - (tDef * .6 | 0));
+      const regen = skLv(mySk, 'regeneration');
+      if (regen) { mHp = Math.min(mMax, mHp + (mMax * regen * .05 | 0)); if (isA) aHp = mHp; else dHp = mHp; }
+
+      const dodge = skLv(foeSkills, 'dodge_master');
+      if (dodge && Math.random() < dodge * .12) { log.push({ text: '💨 Dodged!', side: fSide }); continue; }
+
+      const berserk = skLv(mySk, 'berserker_rage');
+      if (berserk && mHp / mMax < .3) mAtk = mAtk * berserk * 1.5 | 0;
+      const armorBr = skLv(mySk, 'armor_break');
+      if (armorBr) fDef = fDef * (1 - armorBr * .25) | 0;
+
+      let dmg = Math.max(1, mAtk - (fDef * .6 | 0));
       dmg = dmg * (.85 + Math.random() * .3) | 0;
-      // Crit
+
       let crit = false;
-      const critLv = sk(ms, 'critical_eye');
+      const critLv = skLv(mySk, 'critical_eye');
       if (critLv && Math.random() < critLv * .15) { dmg = dmg * 2 | 0; crit = true; }
-      // Iron wall
-      const wall = sk(ts, 'iron_wall');
+
+      const wall = skLv(foeSkills, 'iron_wall');
       if (wall) dmg = Math.max(1, dmg * (1 - wall * .1) | 0);
 
-      eHp -= dmg;
-      if (eHp <= 0) { const ls = isA ? dLS : aLS; if (ls) { eHp = 1; if (isA) dLS = false; else aLS = false; log.push({ text: '🛡️ Last Stand!', side: tSide }); } }
-      if (isA) dHp = eHp; else aHp = eHp;
+      fHp -= dmg;
+      if (fHp <= 0) {
+        const ls = isA ? dLS : aLS;
+        if (ls) { fHp = 1; if (isA) dLS = false; else aLS = false; log.push({ text: '🛡️ Last Stand!', side: fSide }); }
+      }
+      if (isA) dHp = fHp; else aHp = fHp;
       log.push({ text: `${crit ? '💥 ' : ''}${dmg} dmg`, side: mSide });
-      // Poison strike
-      const psnLv = sk(ms, 'poison_strike');
+
+      const psnLv = skLv(mySk, 'poison_strike');
       if (psnLv && Math.random() < psnLv * .15) { if (isA) dPsn = 3; else aPsn = 3; log.push({ text: '🧪 Poisoned!', side: mSide }); }
-      // Double strike
-      const dblLv = sk(ms, 'double_strike');
-      if (dblLv && Math.random() < dblLv * .2) { const d = Math.max(1, dmg * .6 | 0); eHp = isA ? dHp : aHp; eHp -= d; if (isA) dHp = eHp; else aHp = eHp; log.push({ text: `⚔️ x2 ${d}`, side: mSide }); }
-      // Counter
-      const ctrLv = sk(ts, 'counter_attack');
-      if ((isA ? dHp : aHp) > 0 && ctrLv && Math.random() < ctrLv * .2) { const cd = Math.max(1, (isA ? dAtk : aAtk) * .4 | 0); mHp -= cd; if (isA) aHp = mHp; else dHp = mHp; log.push({ text: `🔄 ${cd} ctr`, side: tSide }); }
+
+      const dblLv = skLv(mySk, 'double_strike');
+      if (dblLv && Math.random() < dblLv * .2) {
+        const d = Math.max(1, dmg * .6 | 0);
+        fHp = isA ? dHp : aHp; fHp -= d; if (isA) dHp = fHp; else aHp = fHp;
+        log.push({ text: `⚔️ x2 ${d}`, side: mSide });
+      }
+
+      const ctrLv = skLv(foeSkills, 'counter_attack');
+      if ((isA ? dHp : aHp) > 0 && ctrLv && Math.random() < ctrLv * .2) {
+        const cd = Math.max(1, (isA ? dAtk : aAtk) * .4 | 0);
+        mHp -= cd; if (isA) aHp = mHp; else dHp = mHp;
+        log.push({ text: `🔄 ${cd} ctr`, side: fSide });
+      }
     }
   }
-  return { winner: aHp > dHp ? 'attacker' : 'defender', attackerHp: Math.max(0, aHp), defenderHp: Math.max(0, dHp), rounds: log.length, log: log.slice(-12), damageDealt: dMax - Math.max(0, dHp), damageTaken: aMax - Math.max(0, aHp) };
+  return {
+    winner: aHp > dHp ? 'attacker' : 'defender',
+    attackerHp: Math.max(0, aHp), defenderHp: Math.max(0, dHp),
+    rounds: log.length, log: log.slice(-12),
+    damageDealt: dMax - Math.max(0, dHp), damageTaken: aMax - Math.max(0, aHp),
+  };
 }
 
-// ── Unified Combat ──
-function doCombat(pid, opp, type, lootFn) {
+// ── Unified Combat — single path for PvE, PvP, Raids ──
+function doCombat(pid, foe, type, lootFn) {
   const p = get(pid);
-  if (p.stamina < opp.cost) return { success: false, error: 'Not enough stamina' };
-  const stats = eff(pid), sm = skillMap(pid);
-  const result = simulate(stats, opp.stats, sm, opp.skills || {});
+  if (p.stamina < foe.cost) return { success: false, error: 'Not enough stamina' };
+  const stats = effectiveStats(pid), sm = skillMap(pid);
+  const result = simulate(stats, foe.stats, sm, foe.skills || {});
   const won = result.winner === 'attacker';
-  const gm = sk(sm, 'gold_digger') ? 1 + sm.gold_digger.level * .2 : 1;
-  const xp = won ? rand(...opp.xpRange) : rand(...opp.xpRange) * .25 | 0;
-  const gold = won ? (rand(...opp.goldRange) * gm | 0) : 0;
+  const goldMult = skLv(sm, 'gold_digger') ? 1 + sm.gold_digger.level * .2 : 1;
+  const xp = won ? rand(...foe.xpRange) : rand(...foe.xpRange) * .25 | 0;
+  const gold = won ? (rand(...foe.goldRange) * goldMult | 0) : 0;
   const loot = won && lootFn ? lootFn(p.level, sm) : null;
 
   return tx(() => {
-    const u = { stamina: p.stamina - opp.cost, hp: won ? Math.max(1, Math.min(p.max_hp, result.attackerHp)) : Math.max(1, p.max_hp * .1 | 0), gold: p.gold + gold };
+    const newHp = clampHp(won ? result.attackerHp : (p.max_hp * .1 | 0), p.max_hp);
+    const u = { stamina: p.stamina - foe.cost, hp: Math.max(1, newHp), gold: Math.max(0, p.gold + gold) };
     const wl = type === 'pvp' ? (won ? 'pvp_wins' : 'pvp_losses') : type === 'raid' ? null : (won ? 'wins' : 'losses');
     if (wl) u[wl] = p[wl] + 1;
     if (type === 'raid' && won) { u.raids_completed = p.raids_completed + 1; u.bosses_killed = p.bosses_killed + 1; }
     upd(pid, u);
     if (loot) sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(pid, loot);
     const xpR = addXp(get(pid), xp);
-    sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?,?)').run(pid, type, opp.name, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp, loot);
-    return { success: true, won, combat: result, gold, xp: xpR.xp, lootItem: loot ? EQUIPMENT[loot] : null, leveled: xpR.leveled, newLevel: xpR.newLevel, enemy: opp.cfg, boss: opp.cfg, opponent: opp.meta };
+    sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?,?)')
+      .run(pid, type, foe.name, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp, loot);
+    // Single shape: foe carries its own display info
+    return { success: true, won, combat: result, gold, xp: xpR.xp, lootItem: loot ? EQUIPMENT[loot] : null, leveled: xpR.leveled, newLevel: xpR.newLevel, foe };
   });
 }
 
 export function fightEnemy(pid, enemyId) {
   const p = get(pid), cfg = ENEMIES[enemyId];
-  if (!cfg) return { success: false, error: 'Unknown' };
+  if (!cfg) return { success: false, error: 'Unknown enemy' };
   if (p.level < cfg.minLevel) return { success: false, error: `Need level ${cfg.minLevel}` };
   const s = cfg.scaling ** Math.max(0, p.level - cfg.minLevel);
   return doCombat(pid, {
-    name: cfg.name, cost: ZONES[cfg.zone]?.staminaCost || 1, cfg,
+    name: cfg.name, cost: ZONES[cfg.zone]?.staminaCost || 1,
     stats: { hp: cfg.baseHp * s | 0, maxHp: cfg.baseHp * s | 0, attack: cfg.baseAtk * s | 0, defense: cfg.baseDef * s | 0, speed: cfg.baseSpd * s | 0, strength: 0 },
     xpRange: cfg.xp, goldRange: cfg.gold,
   }, 'pve', rollLoot);
@@ -223,12 +267,12 @@ export function fightEnemy(pid, enemyId) {
 
 export function fightRaid(pid, raidId) {
   const p = get(pid), cfg = RAIDS[raidId];
-  if (!cfg) return { success: false, error: 'Unknown' };
+  if (!cfg) return { success: false, error: 'Unknown raid' };
   if (p.level < cfg.minLevel) return { success: false, error: `Need level ${cfg.minLevel}` };
   return doCombat(pid, {
-    name: cfg.name, cost: cfg.staminaCost, cfg,
+    name: cfg.name, cost: cfg.staminaCost,
     stats: { hp: cfg.hp, maxHp: cfg.hp, attack: cfg.atk, defense: cfg.def, speed: cfg.spd, strength: 0 },
-    xpRange: cfg.rewards.xp, goldRange: cfg.rewards.gold,
+    xpRange: cfg.xp, goldRange: cfg.gold,
   }, 'raid', (lvl, sm) => {
     const lb = sm.lucky_looter?.level * .1 || 0;
     return Math.random() < cfg.lootChance + lb ? cfg.lootTable[rand(0, cfg.lootTable.length - 1)] : null;
@@ -240,18 +284,17 @@ export function pvpFight(pid) {
   if (p.stamina < ECO.pvpCost) return { success: false, error: 'Not enough stamina' };
   const opp = sql('SELECT * FROM players WHERE id!=? AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(pid, Math.max(1, p.level - 3), p.level + 3);
   const lvl = opp?.level || Math.max(1, p.level + rand(-2, 2));
-  const oppName = opp ? opp.username : ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute'][rand(0, 3)] + ` (Lv.${lvl})`;
+  const name = opp ? opp.username : ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute'][rand(0, 3)] + ` (Lv.${lvl})`;
   return doCombat(pid, {
-    name: oppName, cost: ECO.pvpCost,
-    stats: opp ? eff(opp.id) : { hp: 80 + lvl * 12, maxHp: 80 + lvl * 12, attack: 6 + lvl * 2, defense: 3 + lvl, speed: 4 + lvl, strength: 4 + lvl },
+    name, cost: ECO.pvpCost,
+    stats: opp ? effectiveStats(opp.id) : { hp: 80 + lvl * 12, maxHp: 80 + lvl * 12, attack: 6 + lvl * 2, defense: 3 + lvl, speed: 4 + lvl, strength: 4 + lvl },
     skills: opp ? skillMap(opp.id) : {},
     xpRange: [10 + p.level * 3, 30 + p.level * 5],
     goldRange: [10 + p.level * 5, 20 + p.level * 10],
-    meta: { name: oppName, level: lvl },
   }, 'pvp', null);
 }
 
-// ── Loot — precomputed base weights ──
+// ── Loot ──
 const BASE_WEIGHTS = Object.fromEntries(Object.entries(RARITIES).map(([k, v]) => [k, v.weight]));
 
 function rollLoot(level, sm) {

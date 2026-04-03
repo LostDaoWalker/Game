@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as P from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, TABS } from '../core/config.js';
 import { renderDashboard } from '../rendering/views/dashboard.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
@@ -34,7 +34,7 @@ function doAction(pid, action, args = {}) {
   P.regenStamina(p);
   const fmtR = (r, view) => {
     if (!r.success) return r;
-    const name = r.enemy?.name || r.boss?.name || r.opponent?.name || '?';
+    const name = r.foe?.name || '?';
     let m = r.won ? `⚔️ Beat ${name}! +${r.gold}g +${r.xp}xp` : `💀 Lost to ${name}. +${r.xp}xp`;
     if (r.lootItem) m += ` 🎁 ${r.lootItem.icon} ${r.lootItem.name}!`;
     if (r.leveled) m += ` 🎉 Level ${r.newLevel}!`;
@@ -90,7 +90,7 @@ export async function handleSelectMenu(i) {
 // ── UI Builder ──
 function buildUI(view, pid) {
   const rows = [
-    new ActionRowBuilder().addComponents(...['DASHBOARD', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS'].map(t =>
+    new ActionRowBuilder().addComponents(...TABS.slice(0, 5).map(t =>
       new ButtonBuilder().setCustomId(`nav:${t.toLowerCase()}`).setLabel(t).setStyle(view === t.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(view === t.toLowerCase()))),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE').setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'profile'),
