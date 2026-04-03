@@ -1,97 +1,46 @@
-import { THEME, EQUIPMENT, EQUIPMENT_SLOTS } from '../../core/config.js';
-import * as C from '../canvas.js';
-import { createLayout } from '../layout.js';
+import { EQUIPMENT, EQUIPMENT_SLOTS, SLOT_ICONS } from '../../core/config.js';
+import * as R from '../canvas.js';
+const C = R.colors;
 
-const { colors } = THEME;
-const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
+export function renderInventory(player, all, equipped) {
+  const { canvas, ctx, bx, by } = R.layout(player, 'inventory', { sub: '// INVENTORY' });
 
-export function renderInventory(player, allEquipment, equippedItems) {
-  const { canvas, ctx, body } = createLayout(player, 'inventory', {
-    subtitle: '// INVENTORY',
-    rightStats: [{ label: '🪙', value: C.formatNumber(player.gold), color: colors.gold }],
-  });
-
-  const bx = body.x;
-  const by = body.y;
-
-  // ─── Equipped Panel ───
-  C.drawPanel(ctx, bx, by, 260, 188, { title: 'EQUIPPED', glow: true, glowColor: colors.primary });
-  let ey = by + 28;
-  let totalAtk = 0, totalDef = 0, totalHp = 0, totalSpd = 0, totalStr = 0;
+  R.panel(ctx, bx, by, 260, 188, { t: 'EQUIPPED', glow: true, gc: C.primary });
+  let ey = by + 28, ta = 0, td = 0, th = 0, ts = 0, tst = 0;
   for (const slot of EQUIPMENT_SLOTS) {
-    const eq = equippedItems.find(e => EQUIPMENT[e.item_id]?.slot === slot);
-    const cfg = eq ? EQUIPMENT[eq.item_id] : null;
-    C.drawText(ctx, `${SLOT_ICONS[slot]} ${slot.toUpperCase()}`, bx + 12, ey, { size: 10, color: colors.textMuted });
-    if (cfg) {
-      C.drawText(ctx, `${cfg.icon} ${cfg.name}`, bx + 248, ey, { size: 11, bold: true, color: C.getRarityColor(cfg.rarity), align: 'right' });
-      totalAtk += cfg.stats.attack || 0; totalDef += cfg.stats.defense || 0;
-      totalHp += cfg.stats.hp || 0; totalSpd += cfg.stats.speed || 0; totalStr += cfg.stats.strength || 0;
-    } else {
-      C.drawText(ctx, '— empty —', bx + 248, ey, { size: 10, color: colors.textMuted, align: 'right' });
-    }
+    const eq = equipped.find(e => EQUIPMENT[e.item_id]?.slot === slot), cfg = eq ? EQUIPMENT[eq.item_id] : null;
+    R.txt(ctx, `${SLOT_ICONS[slot]} ${slot.toUpperCase()}`, bx + 12, ey, { s: 10, c: C.textMuted });
+    R.txt(ctx, cfg ? `${cfg.icon} ${cfg.name}` : '— empty —', bx + 248, ey, { s: 11, b: !!cfg, c: cfg ? R.rarityColor(cfg.rarity) : C.textMuted, a: 'right' });
+    if (cfg) { ta += cfg.stats.attack || 0; td += cfg.stats.defense || 0; th += cfg.stats.hp || 0; ts += cfg.stats.speed || 0; tst += cfg.stats.strength || 0; }
     ey += 24;
   }
-  ey += 6;
-  C.drawDivider(ctx, bx + 12, ey, 236);
-  ey += 8;
-  C.drawText(ctx, `+${totalAtk}⚔  +${totalDef}🛡  +${totalHp}❤  +${totalSpd}⚡  +${totalStr}💪`, bx + 12, ey, { size: 9, color: colors.success });
+  ey += 6; R.divider(ctx, bx + 12, ey, 236); ey += 8;
+  R.txt(ctx, `+${ta}⚔ +${td}🛡 +${th}❤ +${ts}⚡ +${tst}💪`, bx + 12, ey, { s: 9, c: C.success });
 
-  // ─── Bag ───
-  C.drawPanel(ctx, bx + 272, by, 488, body.h, { title: `BAG (${allEquipment.length} items)` });
-  const sorted = [...allEquipment].sort((a, b) => {
-    const ra = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
-    return (ra[EQUIPMENT[a.item_id]?.rarity] ?? 5) - (ra[EQUIPMENT[b.item_id]?.rarity] ?? 5);
-  });
-
+  // Bag
+  R.panel(ctx, bx + 272, by, 488, 346, { t: `BAG (${all.length})` });
+  const ro = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
+  const sorted = [...all].sort((a, b) => (ro[EQUIPMENT[a.item_id]?.rarity] ?? 5) - (ro[EQUIPMENT[b.item_id]?.rarity] ?? 5));
   let iy = by + 28;
-  const maxShow = 14;
-  for (let i = 0; i < Math.min(maxShow, sorted.length); i++) {
-    const item = sorted[i];
-    const cfg = EQUIPMENT[item.item_id];
-    if (!cfg) continue;
-
-    if (item.equipped) {
-      ctx.fillStyle = 'rgba(0, 240, 255, 0.04)';
-      C.roundRect(ctx, bx + 280, iy - 2, 472, 18, 3);
-      ctx.fill();
-    }
-
-    C.drawText(ctx, `${cfg.icon} ${cfg.name}`, bx + 284, iy, {
-      size: 10, bold: true, color: C.getRarityColor(cfg.rarity), maxWidth: 140,
-    });
-    C.drawText(ctx, cfg.rarity.toUpperCase().slice(0, 4), bx + 440, iy, { size: 8, color: C.getRarityColor(cfg.rarity) });
-
-    const stats = Object.entries(cfg.stats).map(([k, v]) => `+${v}${k.slice(0, 3)}`).join(' ');
-    C.drawText(ctx, stats, bx + 510, iy, { size: 8, color: colors.textDim });
-
-    C.drawText(ctx, item.equipped ? 'EQ' : `${Math.floor(cfg.sellValue * 0.4)}g`, bx + 748, iy, {
-      size: 9, bold: item.equipped, color: item.equipped ? colors.primary : colors.gold, align: 'right',
-    });
+  for (let i = 0; i < Math.min(14, sorted.length); i++) {
+    const it = sorted[i], cfg = EQUIPMENT[it.item_id]; if (!cfg) continue;
+    if (it.equipped) { ctx.fillStyle = 'rgba(0,240,255,.04)'; R.rr(ctx, bx + 280, iy - 2, 472, 18, 3); ctx.fill(); }
+    R.txt(ctx, `${cfg.icon} ${cfg.name}`, bx + 284, iy, { s: 10, b: true, c: R.rarityColor(cfg.rarity), mw: 140 });
+    R.txt(ctx, cfg.rarity.toUpperCase().slice(0, 4), bx + 440, iy, { s: 8, c: R.rarityColor(cfg.rarity) });
+    R.txt(ctx, Object.entries(cfg.stats).map(([k, v]) => `+${v}${k.slice(0, 3)}`).join(' '), bx + 510, iy, { s: 8, c: C.textDim });
+    R.txt(ctx, it.equipped ? 'EQ' : `${cfg.sellValue * .4 | 0}g`, bx + 748, iy, { s: 9, b: it.equipped, c: it.equipped ? C.primary : C.gold, a: 'right' });
     iy += 20;
   }
+  if (sorted.length > 14) R.txt(ctx, `+${sorted.length - 14} more...`, bx + 284, iy, { s: 10, c: C.textDim });
+  else if (!sorted.length) R.txt(ctx, 'Fight enemies for loot!', bx + 284, iy, { s: 11, c: C.textMuted });
 
-  if (sorted.length > maxShow) {
-    C.drawText(ctx, `+${sorted.length - maxShow} more...`, bx + 284, iy, { size: 10, color: colors.textDim });
-  } else if (sorted.length === 0) {
-    C.drawText(ctx, 'No items. Fight enemies for loot!', bx + 284, iy, { size: 11, color: colors.textMuted });
-  }
-
-  // ─── Base Stats ───
-  C.drawPanel(ctx, bx, by + 200, 260, 146, { title: 'BASE + GEAR' });
+  // Base stats
+  R.panel(ctx, bx, by + 200, 260, 146, { t: 'BASE + GEAR' });
   let bsy = by + 228;
-  for (const [label, base, bonus, col] of [
-    ['ATK', player.attack, totalAtk, colors.danger],
-    ['DEF', player.defense, totalDef, colors.primary],
-    ['HP', player.max_hp, totalHp, colors.hpBar],
-    ['SPD', player.speed, totalSpd, colors.energyBar],
-    ['STR', player.strength, totalStr, colors.accent],
-  ]) {
-    C.drawText(ctx, label, bx + 12, bsy, { size: 11, color: colors.textMuted });
-    C.drawText(ctx, `${base}`, bx + 80, bsy, { size: 12, color: col });
-    C.drawText(ctx, bonus > 0 ? `+${bonus}` : '', bx + 140, bsy, { size: 11, color: colors.success });
-    C.drawText(ctx, `= ${base + bonus}`, bx + 200, bsy, { size: 12, bold: true, color: colors.text });
-    bsy += 20;
+  for (const [l, base, bonus, c] of [['ATK', player.attack, ta, C.danger], ['DEF', player.defense, td, C.primary], ['HP', player.max_hp, th, C.hpBar], ['SPD', player.speed, ts, C.energyBar], ['STR', player.strength, tst, C.accent]]) {
+    R.txt(ctx, l, bx + 12, bsy, { s: 11, c: C.textMuted }); R.txt(ctx, `${base}`, bx + 80, bsy, { s: 12, c });
+    if (bonus) R.txt(ctx, `+${bonus}`, bx + 140, bsy, { s: 11, c: C.success });
+    R.txt(ctx, `= ${base + bonus}`, bx + 200, bsy, { s: 12, b: true, c: C.text }); bsy += 20;
   }
-
-  return C.canvasToBuffer(canvas);
+  return R.toBuffer(canvas);
 }

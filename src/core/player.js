@@ -1,814 +1,300 @@
-import { prepare, transaction } from './database.js';
-import {
-  LEVEL_CONFIG, ECONOMY, EQUIPMENT, SKILLS, ENEMIES, RAIDS,
-  RARITIES, EQUIPMENT_SLOTS,
-} from './config.js';
+import { sql, tx } from './database.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES } from './config.js';
 
-// ═══════════════════════════════════════════════
-// Player CRUD
-// ═══════════════════════════════════════════════
+const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
 
-export function getPlayer(id) {
-  return prepare('SELECT * FROM players WHERE id = ?').get(id);
+// ── CRUD ──
+
+export const get = id => sql('SELECT * FROM players WHERE id=?').get(id);
+export const getAll = (q, ...a) => sql(q).all(...a);
+
+export function getOrCreate(id, username) {
+  sql('INSERT OR IGNORE INTO players(id,username) VALUES(?,?)').run(id, username);
+  return get(id);
 }
 
-export function createPlayer(id, username, mentorId) {
-  prepare(`
-    INSERT OR IGNORE INTO players (id, username, mentor_id)
-    VALUES (?, ?, ?)
-  `).run(id, username, mentorId || null);
+export function upd(id, f) {
+  const k = Object.keys(f), s = k.map(k => `${k}=@${k}`).join(',');
+  sql(`UPDATE players SET ${s},last_active=unixepoch() WHERE id=@id`).run({ ...f, id });
+}
 
-  // Credit mentor with a pupil
-  if (mentorId) {
-    const mentor = getPlayer(mentorId);
-    if (mentor) {
-      updatePlayer(mentorId, { pupil_count: mentor.pupil_count + 1 });
-      // Mentor bonus: +50 gold, +20 XP per pupil
-      updatePlayer(mentorId, { gold: mentor.gold + 50 });
-    }
+// ── Stamina ──
+
+export function regenStamina(p) {
+  const now = Date.now() / 1000 | 0, n = (now - p.stamina_regen_at) / ECO.staminaRegen | 0;
+  if (n > 0 && p.stamina < p.max_stamina) {
+    p.stamina = Math.min(p.max_stamina, p.stamina + n);
+    upd(p.id, { stamina: p.stamina, stamina_regen_at: p.stamina_regen_at + n * ECO.staminaRegen });
   }
-
-  return getPlayer(id);
 }
 
-export function getOrCreatePlayer(id, username) {
-  return getPlayer(id) || createPlayer(id, username);
-}
+// ── XP ──
 
-export function updatePlayer(id, fields) {
-  const keys = Object.keys(fields);
-  const sets = keys.map(k => `${k} = @${k}`).join(', ');
-  prepare(`UPDATE players SET ${sets}, last_active = unixepoch() WHERE id = @id`).run({ ...fields, id });
-}
-
-// ═══════════════════════════════════════════════
-// Stamina
-// ═══════════════════════════════════════════════
-
-export function regenStamina(player) {
-  const now = Math.floor(Date.now() / 1000);
-  const elapsed = now - player.stamina_regen_at;
-  const regen = Math.floor(elapsed / ECONOMY.staminaRegenSeconds);
-  if (regen > 0 && player.stamina < player.max_stamina) {
-    const newStamina = Math.min(player.max_stamina, player.stamina + regen);
-    const newRegenAt = player.stamina_regen_at + (regen * ECONOMY.staminaRegenSeconds);
-    updatePlayer(player.id, { stamina: newStamina, stamina_regen_at: newRegenAt });
-    player.stamina = newStamina;
-    player.stamina_regen_at = newRegenAt;
+export function addXp(p, amount) {
+  const ql = getSkillMap(p.id).quick_learner;
+  let xp = p.xp + Math.floor(amount * (1 + (ql ? ql.level * SKILLS.quick_learner.effect.xpBonus : 0)));
+  let { level, xp_needed, max_hp, attack, defense, speed, strength } = p;
+  let lvls = 0;
+  while (xp >= xp_needed && level < LEVEL.max) {
+    xp -= xp_needed; level++; lvls++;
+    xp_needed = Math.floor(LEVEL.xpBase * LEVEL.xpMult ** (level - 1));
+    max_hp += LEVEL.hp; attack += LEVEL.atk; defense += LEVEL.def; speed += LEVEL.spd; strength += LEVEL.str;
   }
-  return player;
+  const u = { xp, level, xp_needed, max_hp, hp: max_hp, attack, defense, speed, strength };
+  if (lvls) { u.pending_skill_picks = p.pending_skill_picks + lvls; genSkillOffers(p.id); }
+  upd(p.id, u);
+  return { xp: amount, leveled: lvls > 0, newLevel: level };
 }
 
-// ═══════════════════════════════════════════════
-// XP / Leveling
-// ═══════════════════════════════════════════════
+// ── Equipment ──
 
-export function addXp(player, amount) {
-  const skills = getPlayerSkills(player.id);
-  const qlSkill = skills.find(s => s.skill_id === 'quick_learner');
-  const bonus = qlSkill ? qlSkill.level * SKILLS.quick_learner.effect.xpBonus : 0;
-  const totalXp = Math.floor(amount * (1 + bonus));
+export const getEquip = pid => sql('SELECT * FROM equipment WHERE player_id=?').all(pid);
+export const getEquipped = pid => sql('SELECT * FROM equipment WHERE player_id=? AND equipped=1').all(pid);
 
-  let xp = player.xp + totalXp;
-  let level = player.level;
-  let xpNeeded = player.xp_needed;
-  let maxHp = player.max_hp;
-  let attack = player.attack;
-  let defense = player.defense;
-  let speed = player.speed;
-  let strength = player.strength;
-  let leveled = false;
-  let levelsGained = 0;
-
-  while (xp >= xpNeeded && level < LEVEL_CONFIG.maxLevel) {
-    xp -= xpNeeded;
-    level++;
-    levelsGained++;
-    xpNeeded = Math.floor(LEVEL_CONFIG.xpBase * Math.pow(LEVEL_CONFIG.xpMultiplier, level - 1));
-    maxHp += LEVEL_CONFIG.hpPerLevel;
-    attack += LEVEL_CONFIG.attackPerLevel;
-    defense += LEVEL_CONFIG.defensePerLevel;
-    speed += LEVEL_CONFIG.speedPerLevel;
-    strength += LEVEL_CONFIG.strengthPerLevel;
-    leveled = true;
-  }
-
-  const updates = {
-    xp, level, xp_needed: xpNeeded,
-    max_hp: maxHp, hp: maxHp, // Full heal on level-up
-    attack, defense, speed, strength,
-  };
-
-  // Grant skill picks on level-up
-  if (levelsGained > 0) {
-    updates.pending_skill_picks = player.pending_skill_picks + levelsGained;
-    generateSkillOffers(player.id);
-  }
-
-  updatePlayer(player.id, updates);
-  return { totalXp, leveled, newLevel: level, levelsGained };
-}
-
-// ═══════════════════════════════════════════════
-// Equipment
-// ═══════════════════════════════════════════════
-
-export function getPlayerEquipment(playerId) {
-  return prepare('SELECT * FROM equipment WHERE player_id = ?').all(playerId);
-}
-
-export function getEquippedItems(playerId) {
-  return prepare('SELECT * FROM equipment WHERE player_id = ? AND equipped = 1').all(playerId);
-}
-
-export function addEquipment(playerId, itemId) {
-  prepare('INSERT INTO equipment (player_id, item_id) VALUES (?, ?)').run(playerId, itemId);
-}
-
-export function equipItem(playerId, equipRowId) {
-  const item = prepare('SELECT * FROM equipment WHERE id = ? AND player_id = ?').get(equipRowId, playerId);
-  if (!item) return { success: false, error: 'Item not found' };
-
-  const config = EQUIPMENT[item.item_id];
-  if (!config) return { success: false, error: 'Unknown item' };
-
-  return transaction(() => {
-    // Unequip current item in same slot
-    prepare(`
-      UPDATE equipment SET equipped = 0
-      WHERE player_id = ? AND equipped = 1
-      AND item_id IN (SELECT key FROM json_each(?))
-    `); // fallback below
-
-    // Unequip all items in this slot
-    const equipped = getEquippedItems(playerId);
-    for (const eq of equipped) {
-      const eqConfig = EQUIPMENT[eq.item_id];
-      if (eqConfig && eqConfig.slot === config.slot) {
-        prepare('UPDATE equipment SET equipped = 0 WHERE id = ?').run(eq.id);
-      }
-    }
-
-    // Equip new item
-    prepare('UPDATE equipment SET equipped = 1 WHERE id = ?').run(equipRowId);
-    return { success: true, item: config };
+export function equipItem(pid, rowId) {
+  const item = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, pid);
+  if (!item) return { success: false, error: 'Not found' };
+  const cfg = EQUIPMENT[item.item_id];
+  if (!cfg) return { success: false, error: 'Unknown' };
+  return tx(() => {
+    for (const eq of getEquipped(pid)) if (EQUIPMENT[eq.item_id]?.slot === cfg.slot) sql('UPDATE equipment SET equipped=0 WHERE id=?').run(eq.id);
+    sql('UPDATE equipment SET equipped=1 WHERE id=?').run(rowId);
+    return { success: true, item: cfg };
   });
 }
 
-export function sellItem(playerId, equipRowId) {
-  const item = prepare('SELECT * FROM equipment WHERE id = ? AND player_id = ?').get(equipRowId, playerId);
-  if (!item) return { success: false, error: 'Item not found' };
+export function sellItem(pid, rowId) {
+  const item = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, pid);
+  if (!item) return { success: false, error: 'Not found' };
   if (item.equipped) return { success: false, error: 'Unequip first' };
-
-  const config = EQUIPMENT[item.item_id];
-  if (!config) return { success: false, error: 'Unknown item' };
-
-  const gold = Math.floor(config.sellValue * ECONOMY.sellMultiplier);
-
-  return transaction(() => {
-    prepare('DELETE FROM equipment WHERE id = ?').run(equipRowId);
-    const player = getPlayer(playerId);
-    updatePlayer(playerId, { gold: player.gold + gold });
-    return { success: true, gold, item: config };
+  const cfg = EQUIPMENT[item.item_id];
+  const gold = Math.floor((cfg?.sellValue || 0) * ECO.sellMult);
+  return tx(() => {
+    sql('DELETE FROM equipment WHERE id=?').run(rowId);
+    const p = get(pid); upd(pid, { gold: p.gold + gold });
+    return { success: true, gold, item: cfg };
   });
 }
 
-export function getEquipmentBonuses(playerId) {
-  const equipped = getEquippedItems(playerId);
-  const bonuses = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
-  for (const eq of equipped) {
-    const config = EQUIPMENT[eq.item_id];
-    if (!config) continue;
-    for (const [stat, val] of Object.entries(config.stats)) {
-      if (bonuses.hasOwnProperty(stat)) bonuses[stat] += val;
-    }
-  }
-  return bonuses;
+function getEquipBonuses(pid) {
+  const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+  for (const eq of getEquipped(pid)) { const c = EQUIPMENT[eq.item_id]; if (c) for (const [k, v] of Object.entries(c.stats)) if (k in b) b[k] += v; }
+  return b;
 }
 
-// ═══════════════════════════════════════════════
-// Skills
-// ═══════════════════════════════════════════════
+// ── Skills ──
 
-export function getPlayerSkills(playerId) {
-  return prepare('SELECT * FROM skills WHERE player_id = ?').all(playerId);
+export const getSkills = pid => sql('SELECT * FROM skills WHERE player_id=?').all(pid);
+export const getOffers = pid => sql('SELECT * FROM skill_offers WHERE player_id=?').get(pid);
+
+function getSkillMap(pid) {
+  const m = {};
+  for (const s of getSkills(pid)) { const c = SKILLS[s.skill_id]; if (c) m[s.skill_id] = { ...c, level: s.level }; }
+  return m;
 }
 
-export function getSkillOffers(playerId) {
-  return prepare('SELECT * FROM skill_offers WHERE player_id = ?').get(playerId);
+function genSkillOffers(pid) {
+  const maxed = new Set(getSkills(pid).filter(s => { const c = SKILLS[s.skill_id]; return c && s.level >= c.maxLevel; }).map(s => s.skill_id));
+  const avail = Object.keys(SKILLS).filter(k => !maxed.has(k));
+  if (avail.length < 3) return;
+  const picks = avail.sort(() => Math.random() - .5).slice(0, 3);
+  sql('INSERT OR REPLACE INTO skill_offers(player_id,skill1,skill2,skill3) VALUES(?,?,?,?)').run(pid, ...picks);
 }
 
-export function generateSkillOffers(playerId) {
-  const existing = getPlayerSkills(playerId);
-  const existingIds = new Set(existing.filter(s => {
-    const cfg = SKILLS[s.skill_id];
-    return cfg && s.level >= cfg.maxLevel;
-  }).map(s => s.skill_id));
-
-  const available = Object.keys(SKILLS).filter(k => !existingIds.has(k));
-  if (available.length < 3) return;
-
-  // Pick 3 random
-  const shuffled = available.sort(() => Math.random() - 0.5);
-  const picks = shuffled.slice(0, 3);
-
-  prepare(`
-    INSERT OR REPLACE INTO skill_offers (player_id, skill1, skill2, skill3)
-    VALUES (?, ?, ?, ?)
-  `).run(playerId, picks[0], picks[1], picks[2]);
-}
-
-export function pickSkill(playerId, skillId) {
-  const player = getPlayer(playerId);
-  if (!player || player.pending_skill_picks <= 0) {
-    return { success: false, error: 'No skill picks available' };
-  }
-
-  const offers = getSkillOffers(playerId);
-  if (!offers) return { success: false, error: 'No skill offers' };
-
-  const validPicks = [offers.skill1, offers.skill2, offers.skill3];
-  if (!validPicks.includes(skillId)) {
-    return { success: false, error: 'Invalid skill choice' };
-  }
-
-  const config = SKILLS[skillId];
-  if (!config) return { success: false, error: 'Unknown skill' };
-
-  return transaction(() => {
-    const existing = prepare('SELECT * FROM skills WHERE player_id = ? AND skill_id = ?').get(playerId, skillId);
-    if (existing) {
-      if (existing.level >= config.maxLevel) {
-        return { success: false, error: 'Skill already maxed' };
-      }
-      prepare('UPDATE skills SET level = level + 1 WHERE player_id = ? AND skill_id = ?').run(playerId, skillId);
-    } else {
-      prepare('INSERT INTO skills (player_id, skill_id, level) VALUES (?, ?, 1)').run(playerId, skillId);
-    }
-
-    updatePlayer(playerId, { pending_skill_picks: player.pending_skill_picks - 1 });
-
-    // Generate new offers if more picks remain
-    if (player.pending_skill_picks - 1 > 0) {
-      generateSkillOffers(playerId);
-    } else {
-      prepare('DELETE FROM skill_offers WHERE player_id = ?').run(playerId);
-    }
-
-    return { success: true, skill: config, newLevel: (existing?.level || 0) + 1 };
+export function pickSkill(pid, skillId) {
+  const p = get(pid);
+  if (!p || p.pending_skill_picks <= 0) return { success: false, error: 'No picks' };
+  const offers = getOffers(pid);
+  if (!offers || ![offers.skill1, offers.skill2, offers.skill3].includes(skillId)) return { success: false, error: 'Invalid' };
+  const cfg = SKILLS[skillId];
+  if (!cfg) return { success: false, error: 'Unknown' };
+  return tx(() => {
+    const ex = sql('SELECT * FROM skills WHERE player_id=? AND skill_id=?').get(pid, skillId);
+    if (ex && ex.level >= cfg.maxLevel) return { success: false, error: 'Maxed' };
+    if (ex) sql('UPDATE skills SET level=level+1 WHERE player_id=? AND skill_id=?').run(pid, skillId);
+    else sql('INSERT INTO skills(player_id,skill_id,level) VALUES(?,?,1)').run(pid, skillId);
+    upd(pid, { pending_skill_picks: p.pending_skill_picks - 1 });
+    if (p.pending_skill_picks - 1 > 0) genSkillOffers(pid); else sql('DELETE FROM skill_offers WHERE player_id=?').run(pid);
+    return { success: true, skill: cfg, newLevel: (ex?.level || 0) + 1 };
   });
 }
 
-// ═══════════════════════════════════════════════
-// Combat Engine
-// ═══════════════════════════════════════════════
+// ── Combat Engine ──
 
-function getEffectiveStats(playerId) {
-  const player = getPlayer(playerId);
-  const bonuses = getEquipmentBonuses(playerId);
-  return {
-    hp: player.hp,
-    maxHp: player.max_hp + bonuses.hp,
-    attack: player.attack + bonuses.attack,
-    defense: player.defense + bonuses.defense,
-    speed: player.speed + bonuses.speed,
-    strength: player.strength + bonuses.strength,
-  };
+function effectiveStats(pid) {
+  const p = get(pid), b = getEquipBonuses(pid);
+  return { hp: p.hp, maxHp: p.max_hp + b.hp, attack: p.attack + b.attack, defense: p.defense + b.defense, speed: p.speed + b.speed, strength: p.strength + b.strength };
 }
 
-function buildSkillMap(playerId) {
-  const skills = getPlayerSkills(playerId);
-  const map = {};
-  for (const s of skills) {
-    const config = SKILLS[s.skill_id];
-    if (!config) continue;
-    map[s.skill_id] = { ...config, level: s.level };
-  }
-  return map;
-}
-
-function simulateCombat(attacker, defender, attackerSkills = {}, defenderSkills = {}) {
-  let atkHp = attacker.maxHp || attacker.hp;
-  let defHp = defender.maxHp || defender.hp;
-  const maxAtkHp = atkHp;
-  const maxDefHp = defHp;
-
-  let atkAtk = attacker.attack + Math.floor(attacker.strength * 0.5);
-  let defAtk = defender.attack + Math.floor((defender.strength || 0) * 0.5);
-  let atkDef = attacker.defense;
-  let defDef = defender.defense;
-
-  let atkLastStand = !!attackerSkills.last_stand;
-  let defLastStand = !!defenderSkills.last_stand;
-  let atkPoisoned = 0;
-  let defPoisoned = 0;
-
+function simulate(atk, def, askills = {}, dskills = {}) {
+  let aHp = atk.maxHp || atk.hp, dHp = def.maxHp || def.hp;
+  const aMax = aHp, dMax = dHp;
+  let aAtk = atk.attack + (atk.strength >> 1), dAtk = def.attack + ((def.strength || 0) >> 1);
+  let aDef = atk.defense, dDef = def.defense;
+  let aLS = !!askills.last_stand, dLS = !!dskills.last_stand;
+  let aPsn = 0, dPsn = 0;
   const log = [];
-  let round = 0;
-  const maxRounds = 30;
 
-  // Intimidate
-  if (attackerSkills.intimidate) {
-    const reduction = attackerSkills.intimidate.level * SKILLS.intimidate.effect.enemyAtkReduction;
-    defAtk = Math.floor(defAtk * (1 - reduction));
-    log.push({ text: '👊 Intimidate reduces enemy ATK!', side: 'attacker' });
-  }
-  if (defenderSkills.intimidate) {
-    const reduction = defenderSkills.intimidate.level * SKILLS.intimidate.effect.enemyAtkReduction;
-    atkAtk = Math.floor(atkAtk * (1 - reduction));
-  }
+  if (askills.intimidate) { dAtk = dAtk * (1 - askills.intimidate.level * .1) | 0; log.push({ text: '👊 Intimidate!', side: 'attacker' }); }
+  if (dskills.intimidate) aAtk = aAtk * (1 - dskills.intimidate.level * .1) | 0;
 
-  // Speed determines who goes first
-  let atkGoesFirst = attacker.speed >= (defender.speed || 0);
+  for (let r = 0; r < 30 && aHp > 0 && dHp > 0; r++) {
+    for (const isAtk of [atk.speed >= (def.speed || 0), atk.speed < (def.speed || 0)]) {
+      const my = isAtk ? askills : dskills, their = isAtk ? dskills : askills;
+      let myAtk = isAtk ? aAtk : dAtk, theirDef = isAtk ? dDef : aDef;
+      const myMax = isAtk ? aMax : dMax;
+      let myHp = isAtk ? aHp : dHp, eHp = isAtk ? dHp : aHp;
+      if (myHp <= 0 || eHp <= 0) continue;
 
-  while (atkHp > 0 && defHp > 0 && round < maxRounds) {
-    round++;
-    const actors = atkGoesFirst
-      ? [{ side: 'attacker', myHp: () => atkHp, enemyHp: () => defHp }]
-      : [{ side: 'defender' }];
+      // Poison tick
+      const psn = isAtk ? aPsn : dPsn;
+      if (psn > 0) { const d = Math.max(1, myMax * .05 | 0); myHp -= d; if (isAtk) { aPsn--; aHp = myHp; } else { dPsn--; dHp = myHp; } log.push({ text: `🧪 ${d} poison`, side: isAtk ? 'attacker' : 'defender' }); if (myHp <= 0) continue; }
 
-    // Each round both sides attack
-    for (const turn of ['attacker', 'defender']) {
-      const isAtk = turn === 'attacker';
-      const mySkills = isAtk ? attackerSkills : defenderSkills;
-      const theirSkills = isAtk ? defenderSkills : attackerSkills;
-      let myAtk = isAtk ? atkAtk : defAtk;
-      let theirDef = isAtk ? defDef : atkDef;
-      const myMaxHp = isAtk ? maxAtkHp : maxDefHp;
-      let currentHp = isAtk ? atkHp : defHp;
-      let enemyHp = isAtk ? defHp : atkHp;
+      // Regen
+      if (my.regeneration) { myHp = Math.min(myMax, myHp + (myMax * my.regeneration.level * .05 | 0)); if (isAtk) aHp = myHp; else dHp = myHp; }
 
-      if (currentHp <= 0) continue;
+      // Dodge
+      if (their.dodge_master && Math.random() < their.dodge_master.level * .12) { log.push({ text: '💨 Dodged!', side: isAtk ? 'defender' : 'attacker' }); continue; }
 
-      // Poison damage
-      const poisonTicks = isAtk ? atkPoisoned : defPoisoned;
-      if (poisonTicks > 0) {
-        const poisonDmg = Math.max(1, Math.floor(myMaxHp * 0.05));
-        currentHp -= poisonDmg;
-        if (isAtk) { atkPoisoned--; atkHp = currentHp; }
-        else { defPoisoned--; defHp = currentHp; }
-        log.push({ text: `🧪 Poison deals ${poisonDmg} damage`, side: turn });
-        if (currentHp <= 0) continue;
-      }
-
-      // Regeneration
-      if (mySkills.regeneration) {
-        const heal = Math.floor(myMaxHp * mySkills.regeneration.level * SKILLS.regeneration.effect.regenPercent);
-        currentHp = Math.min(myMaxHp, currentHp + heal);
-        if (isAtk) atkHp = currentHp; else defHp = currentHp;
-      }
-
-      // Dodge check
-      if (theirSkills.dodge_master) {
-        const dodgeChance = theirSkills.dodge_master.level * SKILLS.dodge_master.effect.dodgeChance;
-        if (Math.random() < dodgeChance) {
-          log.push({ text: '💨 Dodged!', side: turn === 'attacker' ? 'defender' : 'attacker' });
-          continue;
-        }
-      }
-
-      // Berserker rage
-      if (mySkills.berserker_rage && currentHp / myMaxHp < 0.3) {
-        myAtk = Math.floor(myAtk * mySkills.berserker_rage.level * SKILLS.berserker_rage.effect.lowHpDmgMult);
-      }
-
+      // Berserker
+      if (my.berserker_rage && myHp / myMax < .3) myAtk = myAtk * my.berserker_rage.level * 1.5 | 0;
       // Armor break
-      if (mySkills.armor_break) {
-        theirDef = Math.floor(theirDef * (1 - mySkills.armor_break.level * SKILLS.armor_break.effect.armorPen));
-      }
+      if (my.armor_break) theirDef = theirDef * (1 - my.armor_break.level * .25) | 0;
 
-      // Iron wall
-      let dmgReduction = 0;
-      if (theirSkills.iron_wall) {
-        dmgReduction = theirSkills.iron_wall.level * SKILLS.iron_wall.effect.dmgReduction;
-      }
-
-      // Calculate damage
-      let baseDmg = Math.max(1, myAtk - Math.floor(theirDef * 0.6));
-      // Add variance
-      baseDmg = Math.floor(baseDmg * (0.85 + Math.random() * 0.3));
+      let dmg = Math.max(1, myAtk - (theirDef * .6 | 0));
+      dmg = dmg * (.85 + Math.random() * .3) | 0;
 
       // Crit
-      let isCrit = false;
-      if (mySkills.critical_eye) {
-        const critChance = mySkills.critical_eye.level * SKILLS.critical_eye.effect.critChance;
-        if (Math.random() < critChance) {
-          baseDmg = Math.floor(baseDmg * SKILLS.critical_eye.effect.critMult);
-          isCrit = true;
-        }
-      }
+      let crit = false;
+      if (my.critical_eye && Math.random() < my.critical_eye.level * .15) { dmg = dmg * 2 | 0; crit = true; }
 
-      // Apply damage reduction
-      baseDmg = Math.floor(baseDmg * (1 - dmgReduction));
-      baseDmg = Math.max(1, baseDmg);
+      // Iron wall
+      if (their.iron_wall) dmg = Math.max(1, dmg * (1 - their.iron_wall.level * .1) | 0);
 
-      enemyHp -= baseDmg;
+      eHp -= dmg;
+      if (eHp <= 0) { const ls = isAtk ? dLS : aLS; if (ls) { eHp = 1; if (isAtk) dLS = false; else aLS = false; log.push({ text: '🛡️ Last Stand!', side: isAtk ? 'defender' : 'attacker' }); } }
+      if (isAtk) dHp = eHp; else aHp = eHp;
+      log.push({ text: `${crit ? '💥 CRIT! ' : ''}${dmg} dmg`, side: isAtk ? 'attacker' : 'defender' });
 
-      // Last stand
-      if (enemyHp <= 0) {
-        const hasLS = isAtk ? defLastStand : atkLastStand;
-        if (hasLS) {
-          enemyHp = 1;
-          if (isAtk) defLastStand = false; else atkLastStand = false;
-          log.push({ text: '🛡️ Last Stand activated!', side: turn === 'attacker' ? 'defender' : 'attacker' });
-        }
-      }
-
-      if (isAtk) defHp = enemyHp; else atkHp = enemyHp;
-
-      log.push({
-        text: `${isCrit ? '💥 CRIT! ' : ''}${baseDmg} damage`,
-        side: turn,
-      });
-
-      // Poison strike
-      if (mySkills.poison_strike && Math.random() < mySkills.poison_strike.level * SKILLS.poison_strike.effect.poisonChance) {
-        if (isAtk) defPoisoned = 3; else atkPoisoned = 3;
-        log.push({ text: '🧪 Poisoned!', side: turn });
-      }
-
+      // Poison
+      if (my.poison_strike && Math.random() < my.poison_strike.level * .15) { if (isAtk) dPsn = 3; else aPsn = 3; log.push({ text: '🧪 Poisoned!', side: isAtk ? 'attacker' : 'defender' }); }
       // Double strike
-      if (mySkills.double_strike && Math.random() < mySkills.double_strike.level * SKILLS.double_strike.effect.doubleStrikeChance) {
-        const extraDmg = Math.max(1, Math.floor(baseDmg * 0.6));
-        enemyHp = isAtk ? defHp : atkHp;
-        enemyHp -= extraDmg;
-        if (isAtk) defHp = enemyHp; else atkHp = enemyHp;
-        log.push({ text: `⚔️ Double Strike! ${extraDmg} extra`, side: turn });
-      }
-
-      // Counter attack
-      if (enemyHp > 0 && theirSkills.counter_attack) {
-        if (Math.random() < theirSkills.counter_attack.level * SKILLS.counter_attack.effect.counterChance) {
-          const counterDmg = Math.max(1, Math.floor((isAtk ? defAtk : atkAtk) * 0.4));
-          currentHp -= counterDmg;
-          if (isAtk) atkHp = currentHp; else defHp = currentHp;
-          log.push({ text: `🔄 Counter! ${counterDmg} damage`, side: turn === 'attacker' ? 'defender' : 'attacker' });
-        }
-      }
+      if (my.double_strike && Math.random() < my.double_strike.level * .2) { const d = Math.max(1, dmg * .6 | 0); eHp = isAtk ? dHp : aHp; eHp -= d; if (isAtk) dHp = eHp; else aHp = eHp; log.push({ text: `⚔️ x2! ${d} extra`, side: isAtk ? 'attacker' : 'defender' }); }
+      // Counter
+      if ((isAtk ? dHp : aHp) > 0 && their.counter_attack && Math.random() < their.counter_attack.level * .2) { const cd = Math.max(1, (isAtk ? dAtk : aAtk) * .4 | 0); myHp -= cd; if (isAtk) aHp = myHp; else dHp = myHp; log.push({ text: `🔄 Counter ${cd}`, side: isAtk ? 'defender' : 'attacker' }); }
     }
   }
-
-  const attackerWon = atkHp > defHp;
-  return {
-    winner: attackerWon ? 'attacker' : 'defender',
-    attackerHp: Math.max(0, atkHp),
-    defenderHp: Math.max(0, defHp),
-    rounds: round,
-    log: log.slice(-12), // Last 12 entries for display
-    damageDealt: maxDefHp - Math.max(0, defHp),
-    damageTaken: maxAtkHp - Math.max(0, atkHp),
-  };
+  return { winner: aHp > dHp ? 'attacker' : 'defender', attackerHp: Math.max(0, aHp), defenderHp: Math.max(0, dHp), rounds: log.length, log: log.slice(-12), damageDealt: dMax - Math.max(0, dHp), damageTaken: aMax - Math.max(0, aHp) };
 }
 
-// ═══════════════════════════════════════════════
-// PvE Combat
-// ═══════════════════════════════════════════════
+// ── Unified Combat ──
 
-export function fightEnemy(playerId, enemyId) {
-  const player = getPlayer(playerId);
-  if (!player) return { success: false, error: 'No player' };
+function doCombat(pid, opponent, type, lootFn) {
+  const p = get(pid);
+  if (p.stamina < opponent.cost) return { success: false, error: 'Not enough stamina' };
 
-  const config = ENEMIES[enemyId];
-  if (!config) return { success: false, error: 'Unknown enemy' };
-  if (player.level < config.minLevel) return { success: false, error: `Requires level ${config.minLevel}` };
-
-  const zoneCost = getZoneCost(config.zone);
-  if (player.stamina < zoneCost) return { success: false, error: 'Not enough stamina' };
-
-  const stats = getEffectiveStats(playerId);
-  const skillMap = buildSkillMap(playerId);
-
-  // Scale enemy to player level
-  const scaleFactor = Math.pow(config.scaling, Math.max(0, player.level - config.minLevel));
-  const enemy = {
-    hp: Math.floor(config.baseHp * scaleFactor),
-    maxHp: Math.floor(config.baseHp * scaleFactor),
-    attack: Math.floor(config.baseAtk * scaleFactor),
-    defense: Math.floor(config.baseDef * scaleFactor),
-    speed: Math.floor(config.baseSpd * scaleFactor),
-    strength: 0,
-  };
-
-  const result = simulateCombat(stats, enemy, skillMap, {});
+  const stats = effectiveStats(pid), sm = getSkillMap(pid);
+  const result = simulate(stats, opponent.stats, sm, opponent.skills || {});
   const won = result.winner === 'attacker';
 
-  // Gold bonus from skill
-  const goldSkill = skillMap.gold_digger;
-  const goldMult = goldSkill ? 1 + goldSkill.level * SKILLS.gold_digger.effect.goldBonus : 1;
+  const gm = sm.gold_digger ? 1 + sm.gold_digger.level * .2 : 1;
+  const xp = won ? rand(...opponent.xpRange) : rand(...opponent.xpRange) * .25 | 0;
+  const gold = won ? (rand(...opponent.goldRange) * gm | 0) : 0;
+  let loot = won && lootFn ? lootFn(p.level, sm) : null;
 
-  const xp = won ? randInt(...config.xp) : Math.floor(randInt(...config.xp) * 0.25);
-  const gold = won ? Math.floor(randInt(...config.gold) * goldMult) : 0;
-
-  // Loot drop
-  let lootItem = null;
-  if (won) {
-    lootItem = rollLoot(player.level, skillMap);
-  }
-
-  return transaction(() => {
-    // Deduct stamina, update HP
-    const newHp = won ? Math.max(1, Math.min(player.max_hp, result.attackerHp)) : Math.max(1, Math.floor(player.max_hp * 0.1));
-    updatePlayer(playerId, {
-      stamina: player.stamina - zoneCost,
-      hp: newHp,
-      gold: player.gold + gold,
-      wins: player.wins + (won ? 1 : 0),
-      losses: player.losses + (won ? 0 : 1),
-    });
-
-    if (lootItem) {
-      addEquipment(playerId, lootItem);
-    }
-
-    const xpResult = addXp(getPlayer(playerId), xp);
-
-    // Log combat
-    prepare(`
-      INSERT INTO combat_log (player_id, opponent_type, opponent_name, won, damage_dealt, damage_taken, gold_earned, xp_earned, loot_item)
-      VALUES (?, 'pve', ?, ?, ?, ?, ?, ?, ?)
-    `).run(playerId, config.name, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp, lootItem);
-
-    return {
-      success: true, won, combat: result,
-      enemy: config, gold, xp: xpResult.totalXp,
-      lootItem: lootItem ? EQUIPMENT[lootItem] : null,
-      leveled: xpResult.leveled, newLevel: xpResult.newLevel,
-    };
+  return tx(() => {
+    const newHp = won ? Math.max(1, Math.min(p.max_hp, result.attackerHp)) : Math.max(1, p.max_hp * .1 | 0);
+    const u = { stamina: p.stamina - opponent.cost, hp: newHp, gold: p.gold + gold };
+    if (type === 'pvp') { u[won ? 'pvp_wins' : 'pvp_losses'] = p[won ? 'pvp_wins' : 'pvp_losses'] + 1; }
+    else if (type === 'raid') { if (won) { u.raids_completed = p.raids_completed + 1; u.bosses_killed = p.bosses_killed + 1; } }
+    else { u[won ? 'wins' : 'losses'] = p[won ? 'wins' : 'losses'] + 1; }
+    upd(pid, u);
+    if (loot) sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(pid, loot);
+    const xpR = addXp(get(pid), xp);
+    sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?,?)').run(pid, type, opponent.name, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp, loot);
+    return { success: true, won, combat: result, gold, xp: xpR.xp, lootItem: loot ? EQUIPMENT[loot] : null, leveled: xpR.leveled, newLevel: xpR.newLevel };
   });
 }
 
-// ═══════════════════════════════════════════════
-// Raid Boss
-// ═══════════════════════════════════════════════
+export function fightEnemy(pid, enemyId) {
+  const p = get(pid), cfg = ENEMIES[enemyId];
+  if (!cfg) return { success: false, error: 'Unknown' };
+  if (p.level < cfg.minLevel) return { success: false, error: `Need level ${cfg.minLevel}` };
+  const s = cfg.scaling ** Math.max(0, p.level - cfg.minLevel);
+  return doCombat(pid, {
+    name: cfg.name, cost: ZONES[cfg.zone]?.staminaCost || 1,
+    stats: { hp: cfg.baseHp * s | 0, maxHp: cfg.baseHp * s | 0, attack: cfg.baseAtk * s | 0, defense: cfg.baseDef * s | 0, speed: cfg.baseSpd * s | 0, strength: 0 },
+    xpRange: cfg.xp, goldRange: cfg.gold,
+  }, 'pve', rollLoot);
+}
 
-export function fightRaid(playerId, raidId) {
-  const player = getPlayer(playerId);
-  if (!player) return { success: false, error: 'No player' };
+export function fightRaid(pid, raidId) {
+  const p = get(pid), cfg = RAIDS[raidId];
+  if (!cfg) return { success: false, error: 'Unknown' };
+  if (p.level < cfg.minLevel) return { success: false, error: `Need level ${cfg.minLevel}` };
+  return doCombat(pid, {
+    name: cfg.name, cost: cfg.staminaCost,
+    stats: { hp: cfg.hp, maxHp: cfg.hp, attack: cfg.atk, defense: cfg.def, speed: cfg.spd, strength: 0 },
+    xpRange: cfg.rewards.xp, goldRange: cfg.rewards.gold,
+  }, 'raid', (lvl, sm) => {
+    const lb = sm.lucky_looter ? sm.lucky_looter.level * .1 : 0;
+    return Math.random() < cfg.lootChance + lb ? cfg.lootTable[rand(0, cfg.lootTable.length - 1)] : null;
+  });
+}
 
-  const config = RAIDS[raidId];
-  if (!config) return { success: false, error: 'Unknown raid' };
-  if (player.level < config.minLevel) return { success: false, error: `Requires level ${config.minLevel}` };
-  if (player.stamina < config.staminaCost) return { success: false, error: 'Not enough stamina' };
+export function pvpFight(pid) {
+  const p = get(pid);
+  if (p.stamina < ECO.pvpCost) return { success: false, error: 'Not enough stamina' };
+  const opp = sql('SELECT * FROM players WHERE id!=? AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(pid, Math.max(1, p.level - 3), p.level + 3);
+  const lvl = opp?.level || Math.max(1, p.level + rand(-2, 2));
+  const oppStats = opp ? effectiveStats(opp.id) : { hp: 80 + lvl * 12, maxHp: 80 + lvl * 12, attack: 6 + lvl * 2, defense: 3 + lvl, speed: 4 + lvl, strength: 4 + lvl };
+  const oppSkills = opp ? getSkillMap(opp.id) : {};
+  const oppName = opp ? opp.username : ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute'][rand(0, 3)] + ` (Lv.${lvl})`;
 
-  const stats = getEffectiveStats(playerId);
-  const skillMap = buildSkillMap(playerId);
-
-  const boss = {
-    hp: config.hp, maxHp: config.hp,
-    attack: config.atk, defense: config.def,
-    speed: config.spd, strength: 0,
-  };
-
-  const result = simulateCombat(stats, boss, skillMap, {});
+  const stats = effectiveStats(pid), sm = getSkillMap(pid);
+  const result = simulate(stats, oppStats, sm, oppSkills);
   const won = result.winner === 'attacker';
+  const xp = won ? 30 + p.level * 5 : 10 + p.level * 2, gold = won ? 20 + p.level * 10 : 0;
 
-  const goldSkill = skillMap.gold_digger;
-  const goldMult = goldSkill ? 1 + goldSkill.level * SKILLS.gold_digger.effect.goldBonus : 1;
-
-  const xp = won ? randInt(...config.rewards.xp) : Math.floor(randInt(...config.rewards.xp) * 0.2);
-  const gold = won ? Math.floor(randInt(...config.rewards.gold) * goldMult) : 0;
-
-  let lootItem = null;
-  if (won && Math.random() < config.lootChance) {
-    const lootSkill = skillMap.lucky_looter;
-    const lootBonus = lootSkill ? lootSkill.level * 0.1 : 0;
-    if (Math.random() < config.lootChance + lootBonus) {
-      const idx = Math.floor(Math.random() * config.lootTable.length);
-      lootItem = config.lootTable[idx];
-    }
-  }
-
-  return transaction(() => {
-    const newHp = won ? Math.max(1, result.attackerHp) : Math.max(1, Math.floor(player.max_hp * 0.1));
-    updatePlayer(playerId, {
-      stamina: player.stamina - config.staminaCost,
-      hp: newHp,
-      gold: player.gold + gold,
-      raids_completed: player.raids_completed + (won ? 1 : 0),
-      bosses_killed: player.bosses_killed + (won ? 1 : 0),
-    });
-
-    if (lootItem) addEquipment(playerId, lootItem);
-
-    const xpResult = addXp(getPlayer(playerId), xp);
-
-    prepare(`
-      INSERT INTO combat_log (player_id, opponent_type, opponent_name, won, damage_dealt, damage_taken, gold_earned, xp_earned, loot_item)
-      VALUES (?, 'raid', ?, ?, ?, ?, ?, ?, ?)
-    `).run(playerId, config.name, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp, lootItem);
-
-    return {
-      success: true, won, combat: result,
-      boss: config, gold, xp: xpResult.totalXp,
-      lootItem: lootItem ? EQUIPMENT[lootItem] : null,
-      leveled: xpResult.leveled, newLevel: xpResult.newLevel,
-    };
+  return tx(() => {
+    upd(pid, { stamina: p.stamina - ECO.pvpCost, hp: Math.max(1, result.attackerHp), gold: p.gold + gold, [won ? 'pvp_wins' : 'pvp_losses']: p[won ? 'pvp_wins' : 'pvp_losses'] + 1 });
+    const xpR = addXp(get(pid), xp);
+    sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned) VALUES(?,?,?,?,?,?,?,?)').run(pid, 'pvp', oppName, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp);
+    return { success: true, won, combat: result, opponent: { name: oppName, level: lvl }, gold, xp: xpR.xp, leveled: xpR.leveled, newLevel: xpR.newLevel };
   });
 }
 
-// ═══════════════════════════════════════════════
-// PvP Arena (My Brute style)
-// ═══════════════════════════════════════════════
+// ── Loot ──
 
-export function pvpFight(playerId) {
-  const player = getPlayer(playerId);
-  if (!player) return { success: false, error: 'No player' };
-  if (player.stamina < ECONOMY.pvpStaminaCost) return { success: false, error: 'Not enough stamina' };
-
-  // Find a random opponent close in level
-  const opponents = prepare(`
-    SELECT * FROM players WHERE id != ? AND level BETWEEN ? AND ?
-    ORDER BY RANDOM() LIMIT 1
-  `).all(playerId, Math.max(1, player.level - 3), player.level + 3);
-
-  if (opponents.length === 0) {
-    // Generate a bot opponent
-    return fightPvpBot(player);
-  }
-
-  const opponent = opponents[0];
-  const myStats = getEffectiveStats(playerId);
-  const theirStats = getEffectiveStats(opponent.id);
-  const mySkills = buildSkillMap(playerId);
-  const theirSkills = buildSkillMap(opponent.id);
-
-  const result = simulateCombat(myStats, theirStats, mySkills, theirSkills);
-  const won = result.winner === 'attacker';
-
-  const xp = won ? 30 + player.level * 5 : 10 + player.level * 2;
-  const gold = won ? 20 + player.level * 10 : 0;
-
-  return transaction(() => {
-    updatePlayer(playerId, {
-      stamina: player.stamina - ECONOMY.pvpStaminaCost,
-      hp: Math.max(1, result.attackerHp),
-      gold: player.gold + gold,
-      pvp_wins: player.pvp_wins + (won ? 1 : 0),
-      pvp_losses: player.pvp_losses + (won ? 0 : 1),
-    });
-
-    const xpResult = addXp(getPlayer(playerId), xp);
-
-    prepare(`
-      INSERT INTO combat_log (player_id, opponent_type, opponent_name, won, damage_dealt, damage_taken, gold_earned, xp_earned)
-      VALUES (?, 'pvp', ?, ?, ?, ?, ?, ?)
-    `).run(playerId, opponent.username, won ? 1 : 0, result.damageDealt, result.damageTaken, gold, xp);
-
-    return {
-      success: true, won, combat: result,
-      opponent: { name: opponent.username, level: opponent.level },
-      gold, xp: xpResult.totalXp,
-      leveled: xpResult.leveled, newLevel: xpResult.newLevel,
-    };
-  });
+function rollLoot(level, sm) {
+  const lb = sm.lucky_looter ? sm.lucky_looter.level : 0;
+  if (Math.random() > .3 + lb * .05) return null;
+  const w = Object.fromEntries(Object.entries(RARITIES).map(([k, v]) => [k, v.weight]));
+  if (lb) { w.common = Math.max(10, w.common - lb * 10); w.uncommon += lb * 3; w.rare += lb * 2; w.epic += lb; }
+  const total = Object.values(w).reduce((a, b) => a + b, 0);
+  let roll = Math.random() * total, rarity = 'common';
+  for (const [r, wt] of Object.entries(w)) { roll -= wt; if (roll <= 0) { rarity = r; break; } }
+  const cands = Object.entries(EQUIPMENT).filter(([, i]) => i.rarity === rarity && i.dropLevel <= level + 2);
+  return cands.length ? cands[rand(0, cands.length - 1)][0] : null;
 }
 
-function fightPvpBot(player) {
-  const botLevel = Math.max(1, player.level + randInt(-2, 2));
-  const botStats = {
-    hp: 80 + botLevel * 12,
-    maxHp: 80 + botLevel * 12,
-    attack: 6 + botLevel * 2,
-    defense: 3 + botLevel * 1,
-    speed: 4 + botLevel * 1,
-    strength: 4 + botLevel * 1,
-  };
+// ── Misc ──
 
-  const myStats = getEffectiveStats(player.id);
-  const mySkills = buildSkillMap(player.id);
-
-  const result = simulateCombat(myStats, botStats, mySkills, {});
-  const won = result.winner === 'attacker';
-  const xp = won ? 25 + player.level * 4 : 8 + player.level * 2;
-  const gold = won ? 15 + player.level * 8 : 0;
-
-  const botName = ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute', 'SteelNerve'][randInt(0, 4)];
-
-  return transaction(() => {
-    updatePlayer(player.id, {
-      stamina: player.stamina - ECONOMY.pvpStaminaCost,
-      hp: Math.max(1, result.attackerHp),
-      gold: player.gold + gold,
-      pvp_wins: player.pvp_wins + (won ? 1 : 0),
-      pvp_losses: player.pvp_losses + (won ? 0 : 1),
-    });
-
-    const xpResult = addXp(getPlayer(player.id), xp);
-
-    return {
-      success: true, won, combat: result,
-      opponent: { name: `${botName} (Lv.${botLevel})`, level: botLevel },
-      gold, xp: xpResult.totalXp,
-      leveled: xpResult.leveled, newLevel: xpResult.newLevel,
-    };
-  });
+export function heal(pid) {
+  const p = get(pid);
+  if (p.hp >= p.max_hp) return { success: false, error: 'Full HP' };
+  const cost = (p.max_hp - p.hp) * ECO.healPerHp | 0;
+  if (p.gold < cost) return { success: false, error: `Need ${cost}g` };
+  upd(pid, { gold: p.gold - cost, hp: p.max_hp });
+  return { success: true, cost, healed: p.max_hp - p.hp };
 }
 
-// ═══════════════════════════════════════════════
-// Loot Drop System
-// ═══════════════════════════════════════════════
-
-function rollLoot(playerLevel, skillMap) {
-  // 30% base drop chance
-  const lootSkill = skillMap.lucky_looter;
-  const dropChance = 0.30 + (lootSkill ? lootSkill.level * 0.05 : 0);
-  if (Math.random() > dropChance) return null;
-
-  // Roll rarity
-  const lootBonus = lootSkill ? lootSkill.level : 0;
-  const rarity = rollRarity(lootBonus);
-
-  // Find items matching rarity and near player level
-  const candidates = Object.entries(EQUIPMENT).filter(([_, item]) =>
-    item.rarity === rarity && item.dropLevel <= playerLevel + 2
-  );
-
-  if (candidates.length === 0) return null;
-  return candidates[Math.floor(Math.random() * candidates.length)][0];
+export function calcNetworth(p) {
+  let ev = 0; for (const eq of getEquip(p.id)) ev += EQUIPMENT[eq.item_id]?.sellValue || 0;
+  const nw = (p.gold * ECO.networth.gold + ev * ECO.networth.equip + p.level * ECO.networth.level) | 0;
+  upd(p.id, { networth: nw, peak_networth: Math.max(nw, p.peak_networth) });
+  return nw;
 }
 
-function rollRarity(bonus) {
-  const weights = { ...Object.fromEntries(Object.entries(RARITIES).map(([k, v]) => [k, v.weight])) };
-  // Bonus shifts weight toward higher rarities
-  if (bonus > 0) {
-    weights.common = Math.max(10, weights.common - bonus * 10);
-    weights.uncommon += bonus * 3;
-    weights.rare += bonus * 2;
-    weights.epic += bonus;
-  }
-
-  const total = Object.values(weights).reduce((a, b) => a + b, 0);
-  let roll = Math.random() * total;
-  for (const [rarity, weight] of Object.entries(weights)) {
-    roll -= weight;
-    if (roll <= 0) return rarity;
-  }
-  return 'common';
-}
-
-// ═══════════════════════════════════════════════
-// Healing
-// ═══════════════════════════════════════════════
-
-export function healPlayer(playerId) {
-  const player = getPlayer(playerId);
-  if (player.hp >= player.max_hp) return { success: false, error: 'Already at full HP' };
-  const cost = Math.floor((player.max_hp - player.hp) * ECONOMY.healCostPerHp);
-  if (player.gold < cost) return { success: false, error: `Need ${cost} gold to heal` };
-  updatePlayer(playerId, { gold: player.gold - cost, hp: player.max_hp });
-  return { success: true, cost, healed: player.max_hp - player.hp };
-}
-
-// ═══════════════════════════════════════════════
-// Networth
-// ═══════════════════════════════════════════════
-
-export function calculateNetworth(player) {
-  const equipment = getPlayerEquipment(player.id);
-  let equipValue = 0;
-  for (const eq of equipment) {
-    const config = EQUIPMENT[eq.item_id];
-    if (config) equipValue += config.sellValue;
-  }
-
-  const networth = Math.floor(
-    player.gold * ECONOMY.networthMultipliers.gold +
-    equipValue * ECONOMY.networthMultipliers.equipmentValue +
-    player.level * ECONOMY.networthMultipliers.levelValue
-  );
-
-  updatePlayer(player.id, {
-    networth,
-    peak_networth: Math.max(networth, player.peak_networth),
-  });
-  return networth;
-}
-
-// ═══════════════════════════════════════════════
-// Leaderboard
-// ═══════════════════════════════════════════════
-
-export function getLeaderboard(limit = 10) {
-  return prepare('SELECT id, username, networth, level, pvp_wins FROM players ORDER BY networth DESC LIMIT ?').all(limit);
-}
-
-// ═══════════════════════════════════════════════
-// Combat Log
-// ═══════════════════════════════════════════════
-
-export function getRecentCombatLog(playerId, limit = 5) {
-  return prepare('SELECT * FROM combat_log WHERE player_id = ? ORDER BY timestamp DESC LIMIT ?').all(playerId, limit);
-}
-
-// ═══════════════════════════════════════════════
-// Utils
-// ═══════════════════════════════════════════════
-
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-
-function getZoneCost(zone) {
-  const zones = { streets: 1, underground: 2, warzone: 3, dragons_lair: 4 };
-  return zones[zone] || 1;
-}
+export const getLog = (pid, n = 5) => sql('SELECT * FROM combat_log WHERE player_id=? ORDER BY timestamp DESC LIMIT ?').all(pid, n);
+export const getLeaderboard = (n = 10) => sql('SELECT id,username,networth,level,pvp_wins FROM players ORDER BY networth DESC LIMIT ?').all(n);

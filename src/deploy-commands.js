@@ -1,34 +1,9 @@
-import { REST, Routes } from 'discord.js';
-import { commands } from './bot/commands.js';
+import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
-const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+const [TOKEN, CID, GID] = [process.env.DISCORD_TOKEN, process.env.CLIENT_ID, process.env.GUILD_ID];
+if (!TOKEN || !CID) { console.error('Missing DISCORD_TOKEN or CLIENT_ID'); process.exit(1); }
 
-if (!TOKEN || !CLIENT_ID) {
-  console.error('❌ Missing DISCORD_TOKEN or CLIENT_ID in environment');
-  process.exit(1);
-}
-
+const cmd = new SlashCommandBuilder().setName('nexus').setDescription('Launch NEXUS — Fight. Loot. Dominate.');
 const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-async function deploy() {
-  try {
-    console.log('◆ Deploying slash commands...');
-
-    if (GUILD_ID) {
-      // Guild-specific (instant, for development)
-      await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-      console.log(`✓ Commands deployed to guild ${GUILD_ID}`);
-    } else {
-      // Global (takes up to 1 hour to propagate)
-      await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-      console.log('✓ Commands deployed globally');
-    }
-  } catch (err) {
-    console.error('Failed to deploy commands:', err);
-    process.exit(1);
-  }
-}
-
-deploy();
+const route = GID ? Routes.applicationGuildCommands(CID, GID) : Routes.applicationCommands(CID);
+rest.put(route, { body: [cmd.toJSON()] }).then(() => console.log('✓ Commands deployed')).catch(e => { console.error(e); process.exit(1); });

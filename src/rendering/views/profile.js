@@ -1,113 +1,56 @@
-import { THEME, EQUIPMENT } from '../../core/config.js';
-import * as C from '../canvas.js';
-import { createLayout, drawLabeledBar } from '../layout.js';
-
-const { colors } = THEME;
+import { EQUIPMENT, SLOT_ICONS, EQUIPMENT_SLOTS } from '../../core/config.js';
+import * as R from '../canvas.js';
+const C = R.colors;
 
 export function renderProfile(player, equipment, skills, rank) {
-  const { canvas, ctx, body } = createLayout(player, 'profile', {
-    subtitle: '// DOSSIER',
-    rightStats: [{ label: 'RANK', value: `#${rank}`, color: colors.accent }],
+  const { canvas, ctx, bx, by } = R.layout(player, 'profile', {
+    sub: '// DOSSIER', stats: [{ l: 'RANK', v: `#${rank}`, c: C.accent }],
   });
 
-  const bx = body.x;
-  const by = body.y;
-
-  // ─── Identity Card ───
-  C.drawPanel(ctx, bx, by, 260, 180, { glow: true, glowColor: colors.primary });
-  C.drawText(ctx, player.username, bx + 130, by + 16, {
-    size: 18, bold: true, color: colors.primary, align: 'center', maxWidth: 240,
-  });
-  const medals = ['🥇', '🥈', '🥉'];
-  const rankLabel = rank <= 3 ? `${medals[rank - 1]} #${rank}` : `#${rank}`;
-  C.drawText(ctx, rankLabel, bx + 130, by + 40, { size: 15, bold: true, color: colors.accent, align: 'center' });
-  C.drawText(ctx, `Level ${player.level} Operative`, bx + 130, by + 62, { size: 12, color: colors.secondary, align: 'center' });
-
-  C.drawDivider(ctx, bx + 20, by + 82, 220);
-
+  // Identity
+  R.panel(ctx, bx, by, 260, 180, { glow: true, gc: C.primary });
+  R.txt(ctx, player.username, bx + 130, by + 16, { s: 18, b: true, c: C.primary, a: 'center', mw: 240 });
+  R.txt(ctx, `${['🥇', '🥈', '🥉'][rank - 1] || ''} #${rank}`, bx + 130, by + 40, { s: 15, b: true, c: C.accent, a: 'center' });
+  R.txt(ctx, `Level ${player.level} Operative`, bx + 130, by + 62, { s: 12, c: C.secondary, a: 'center' });
+  R.divider(ctx, bx + 20, by + 82, 220);
   let iy = by + 92;
-  for (const [label, value] of [
-    ['JOINED', new Date(player.created_at * 1000).toLocaleDateString()],
-    ['LAST ACTIVE', new Date(player.last_active * 1000).toLocaleDateString()],
-    ['PUPILS', `${player.pupil_count}`],
-  ]) {
-    C.drawText(ctx, label, bx + 20, iy, { size: 9, color: colors.textMuted });
-    C.drawText(ctx, value, bx + 240, iy, { size: 10, color: colors.textDim, align: 'right' });
-    iy += 16;
+  for (const [l, v] of [['JOINED', new Date(player.created_at * 1000).toLocaleDateString()], ['PUPILS', `${player.pupil_count}`]]) {
+    R.txt(ctx, l, bx + 20, iy, { s: 9, c: C.textMuted }); R.txt(ctx, v, bx + 240, iy, { s: 10, c: C.textDim, a: 'right' }); iy += 16;
   }
+  R.labelBar(ctx, bx + 20, iy + 4, 220, 'XP', player.xp, player.xp_needed, C.xpBar);
 
-  drawLabeledBar(ctx, bx + 20, iy + 4, 220, 'XP', player.xp, player.xp_needed, colors.xpBar);
-
-  // ─── Combat Stats ───
-  C.drawPanel(ctx, bx + 272, by, 234, 180, { title: 'COMBAT' });
+  // Combat
+  R.panel(ctx, bx + 272, by, 234, 180, { t: 'COMBAT' });
   let sy = by + 28;
-  for (const [label, val, col] of [
-    ['LEVEL', player.level, colors.secondary],
-    ['ATTACK', player.attack, colors.danger],
-    ['DEFENSE', player.defense, colors.primary],
-    ['SPEED', player.speed, colors.energyBar],
-    ['STRENGTH', player.strength, colors.accent],
-    ['MAX HP', player.max_hp, colors.hpBar],
-    ['NETWORTH', `${C.formatNumber(player.networth)}g`, colors.gold],
-  ]) {
-    C.drawText(ctx, label, bx + 284, sy, { size: 10, color: colors.textMuted });
-    C.drawText(ctx, String(val), bx + 494, sy, { size: 11, bold: true, color: col, align: 'right' });
-    sy += 20;
+  for (const [l, v, c] of [['LEVEL', player.level, C.secondary], ['ATTACK', player.attack, C.danger], ['DEFENSE', player.defense, C.primary], ['SPEED', player.speed, C.energyBar], ['STRENGTH', player.strength, C.accent], ['MAX HP', player.max_hp, C.hpBar], ['NETWORTH', R.fmt(player.networth) + 'g', C.gold]]) {
+    R.txt(ctx, l, bx + 284, sy, { s: 10, c: C.textMuted }); R.txt(ctx, `${v}`, bx + 494, sy, { s: 11, b: true, c, a: 'right' }); sy += 20;
   }
 
-  // ─── Record ───
-  C.drawPanel(ctx, bx + 518, by, 242, 180, { title: 'RECORD' });
+  // Record
+  R.panel(ctx, bx + 518, by, 242, 180, { t: 'RECORD' });
   let ry = by + 28;
-  for (const [label, val, col] of [
-    ['PvE Wins', player.wins, colors.success],
-    ['PvE Losses', player.losses, colors.danger],
-    ['PvP Wins', player.pvp_wins, colors.success],
-    ['PvP Losses', player.pvp_losses, colors.danger],
-    ['Raids Done', player.raids_completed, colors.legendary],
-    ['Bosses Killed', player.bosses_killed, colors.accent],
-    ['Peak Net', `${C.formatNumber(player.peak_networth)}g`, colors.gold],
-  ]) {
-    C.drawText(ctx, label, bx + 530, ry, { size: 10, color: colors.textMuted });
-    C.drawText(ctx, String(val), bx + 748, ry, { size: 11, bold: true, color: col, align: 'right' });
-    ry += 20;
+  for (const [l, v, c] of [['PvE W/L', `${player.wins}/${player.losses}`, C.success], ['PvP W/L', `${player.pvp_wins}/${player.pvp_losses}`, C.secondary], ['Raids', player.raids_completed, C.legendary], ['Bosses', player.bosses_killed, C.accent], ['Peak Net', R.fmt(player.peak_networth) + 'g', C.gold]]) {
+    R.txt(ctx, l, bx + 530, ry, { s: 10, c: C.textMuted }); R.txt(ctx, `${v}`, bx + 748, ry, { s: 11, b: true, c, a: 'right' }); ry += 22;
   }
 
-  // ─── Gear Summary ───
-  C.drawPanel(ctx, bx, by + 192, 370, 154, { title: 'GEAR LOADOUT' });
-  let gy = by + 220;
-  const slotIcons = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
-  const equipped = equipment.filter(e => e.equipped);
-  for (const slot of ['weapon', 'armor', 'helmet', 'boots', 'accessory']) {
-    const eq = equipped.find(e => EQUIPMENT[e.item_id]?.slot === slot);
-    const cfg = eq ? EQUIPMENT[eq.item_id] : null;
-    C.drawText(ctx, `${slotIcons[slot]} ${slot.toUpperCase()}`, bx + 12, gy, { size: 10, color: colors.textMuted });
-    C.drawText(ctx, cfg ? `${cfg.icon} ${cfg.name}` : '—', bx + 358, gy, {
-      size: 11, color: cfg ? C.getRarityColor(cfg.rarity) : colors.textMuted, align: 'right',
-    });
-    gy += 20;
+  // Gear
+  R.panel(ctx, bx, by + 192, 370, 154, { t: 'GEAR' });
+  let gy = by + 220; const eq = equipment.filter(e => e.equipped);
+  for (const slot of EQUIPMENT_SLOTS) {
+    const e = eq.find(e => EQUIPMENT[e.item_id]?.slot === slot), cfg = e ? EQUIPMENT[e.item_id] : null;
+    R.txt(ctx, `${SLOT_ICONS[slot]} ${slot.toUpperCase()}`, bx + 12, gy, { s: 10, c: C.textMuted });
+    R.txt(ctx, cfg ? `${cfg.icon} ${cfg.name}` : '—', bx + 358, gy, { s: 11, c: cfg ? R.rarityColor(cfg.rarity) : C.textMuted, a: 'right' }); gy += 20;
   }
+  let gv = 0; for (const e of equipment) gv += EQUIPMENT[e.item_id]?.sellValue || 0;
+  R.txt(ctx, `Gear Value: ${R.fmt(gv)}g`, bx + 12, gy + 8, { s: 11, c: C.gold });
 
-  // Total gear value
-  let gearValue = 0;
-  for (const e of equipment) { gearValue += EQUIPMENT[e.item_id]?.sellValue || 0; }
-  gy += 4;
-  C.drawText(ctx, `Total Gear Value: ${C.formatNumber(gearValue)}g`, bx + 12, gy, { size: 11, color: colors.gold });
-
-  // ─── Skills Summary ───
-  C.drawPanel(ctx, bx + 382, by + 192, 378, 154, { title: 'SKILLS' });
+  // Skills
+  R.panel(ctx, bx + 382, by + 192, 378, 154, { t: 'SKILLS' });
   let sky = by + 220;
-  if (skills.length === 0) {
-    C.drawText(ctx, 'No skills learned yet.', bx + 394, sky, { size: 11, color: colors.textMuted });
-  } else {
-    for (const sk of skills.slice(0, 6)) {
-      C.drawText(ctx, `${sk.icon} ${sk.name}`, bx + 394, sky, { size: 11, color: colors.text });
-      C.drawText(ctx, `Lv.${sk.level}`, bx + 748, sky, { size: 11, bold: true, color: colors.secondary, align: 'right' });
-      sky += 20;
-    }
-    if (skills.length > 6) {
-      C.drawText(ctx, `+${skills.length - 6} more`, bx + 394, sky, { size: 10, color: colors.textDim });
-    }
+  if (!skills.length) R.txt(ctx, 'No skills yet.', bx + 394, sky, { s: 11, c: C.textMuted });
+  else for (const sk of skills.slice(0, 6)) {
+    R.txt(ctx, `${sk.icon} ${sk.name}`, bx + 394, sky, { s: 11, c: C.text });
+    R.txt(ctx, `Lv.${sk.level}`, bx + 748, sky, { s: 11, b: true, c: C.secondary, a: 'right' }); sky += 20;
   }
-
-  return C.canvasToBuffer(canvas);
+  return R.toBuffer(canvas);
 }

@@ -1,150 +1,67 @@
-import { THEME, ZONES, ENEMIES, ECONOMY } from '../../core/config.js';
-import * as C from '../canvas.js';
-import { createLayout, drawLabeledBar } from '../layout.js';
+import { ZONES, ENEMIES, ECO } from '../../core/config.js';
+import * as R from '../canvas.js';
+const C = R.colors;
 
-const { colors } = THEME;
-
-export function renderFight(player, combatResult = null) {
-  const { canvas, ctx, body } = createLayout(player, 'fight', {
-    subtitle: '// COMBAT ZONE',
-    rightStats: [
-      { label: '⚡', value: `${player.stamina}/${player.max_stamina}`, color: colors.staminaBar },
-      { label: '🪙', value: C.formatNumber(player.gold), color: colors.gold },
-    ],
+export function renderFight(player, result) {
+  const { canvas, ctx, bx, by } = R.layout(player, 'fight', {
+    sub: '// COMBAT ZONE',
+    stats: [{ l: '⚡', v: `${player.stamina}/${player.max_stamina}`, c: C.staminaBar }, { l: '🪙', v: R.fmt(player.gold), c: C.gold }],
   });
-
-  if (combatResult) {
-    drawCombatResult(ctx, body, player, combatResult);
-  } else {
-    drawZoneSelect(ctx, body, player);
-  }
-
-  return C.canvasToBuffer(canvas);
+  result ? drawResult(ctx, bx, by, 760, player, result) : drawZones(ctx, bx, by, player);
+  return R.toBuffer(canvas);
 }
 
-function drawZoneSelect(ctx, body, player) {
-  const bx = body.x;
-  const by = body.y;
-  const entries = Object.entries(ZONES);
-  const cardW = 368;
-  const cardH = 76;
-  const gap = 8;
-
-  for (let i = 0; i < entries.length; i++) {
-    const [zoneId, zone] = entries[i];
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x = bx + col * (cardW + 24);
-    const y = by + row * (cardH + gap);
-    const locked = player.level < zone.minLevel;
-
-    C.drawPanel(ctx, x, y, cardW, cardH, {
-      glow: !locked, glowColor: locked ? colors.danger : colors.primary,
-    });
-
-    C.drawText(ctx, `${zone.icon} ${zone.name}`, x + 12, y + 8, {
-      size: 14, bold: true, color: locked ? colors.textMuted : colors.text,
-    });
-
-    if (locked) {
-      C.drawText(ctx, `🔒 Level ${zone.minLevel}`, x + cardW - 12, y + 10, { size: 11, color: colors.danger, align: 'right' });
-    } else {
-      C.drawText(ctx, `⚡${zone.staminaCost}`, x + cardW - 12, y + 10, { size: 11, color: colors.staminaBar, align: 'right' });
-    }
-
-    // Enemies in zone
-    const zoneEnemies = Object.entries(ENEMIES).filter(([_, e]) => e.zone === zoneId);
+function drawZones(ctx, bx, by, p) {
+  let i = 0;
+  for (const [zid, z] of Object.entries(ZONES)) {
+    const col = i % 2, row = i >> 1, x = bx + col * 392, y = by + row * 84, locked = p.level < z.minLevel;
+    R.panel(ctx, x, y, 368, 76, { glow: !locked, gc: locked ? C.danger : C.primary });
+    R.txt(ctx, `${z.icon} ${z.name}`, x + 12, y + 8, { s: 14, b: true, c: locked ? C.textMuted : C.text });
+    R.txt(ctx, locked ? `🔒 Lv.${z.minLevel}` : `⚡${z.staminaCost}`, x + 356, y + 10, { s: 11, c: locked ? C.danger : C.staminaBar, a: 'right' });
     let ey = y + 30;
-    for (const [_, enemy] of zoneEnemies) {
-      const eLocked = player.level < enemy.minLevel;
-      C.drawText(ctx, `${enemy.icon} ${enemy.name}`, x + 20, ey, {
-        size: 10, color: eLocked ? colors.textMuted : colors.textDim,
-      });
-      C.drawText(ctx, `Lv.${enemy.minLevel}+`, x + cardW - 16, ey, {
-        size: 9, color: eLocked ? colors.danger : colors.textMuted, align: 'right',
-      });
-      ey += 13;
+    for (const [, e] of Object.entries(ENEMIES).filter(([, e]) => e.zone === zid)) {
+      const el = p.level < e.minLevel;
+      R.txt(ctx, `${e.icon} ${e.name}`, x + 20, ey, { s: 10, c: el ? C.textMuted : C.textDim });
+      R.txt(ctx, `Lv.${e.minLevel}+`, x + 356, ey, { s: 9, c: el ? C.danger : C.textMuted, a: 'right' }); ey += 13;
     }
+    i++;
   }
-
-  // PvP Arena
-  const pvpY = by + 2 * (cardH + gap);
-  C.drawPanel(ctx, bx, pvpY, body.w, 62, { title: 'PVP ARENA', glow: true, glowColor: colors.secondary });
-  C.drawText(ctx, '⚔️ Challenge a random opponent near your level', bx + 12, pvpY + 28, { size: 13, color: colors.text });
-  C.drawText(ctx, `⚡${ECONOMY.pvpStaminaCost} stamina`, bx + 12, pvpY + 44, { size: 11, color: colors.staminaBar });
-  C.drawText(ctx, 'Win gold, XP, and glory', bx + 180, pvpY + 44, { size: 11, color: colors.textDim });
-
-  // HP Bar
-  const hpY = pvpY + 72;
-  C.drawPanel(ctx, bx, hpY, body.w, 34);
-  C.drawText(ctx, `HP: ${player.hp}/${player.max_hp}`, bx + 12, hpY + 10, { size: 12, bold: true, color: colors.hpBar });
-  C.drawProgressBar(ctx, bx + 160, hpY + 10, 400, 11, player.hp / player.max_hp, colors.hpBar);
-  if (player.hp < player.max_hp) {
-    const cost = Math.floor((player.max_hp - player.hp) * ECONOMY.healCostPerHp);
-    C.drawText(ctx, `Heal: ${cost}g`, bx + body.w - 12, hpY + 10, { size: 11, color: colors.gold, align: 'right' });
-  } else {
-    C.drawText(ctx, '✓ Full', bx + body.w - 12, hpY + 10, { size: 11, color: colors.success, align: 'right' });
-  }
+  // PvP
+  const pvpY = by + 168;
+  R.panel(ctx, bx, pvpY, 760, 58, { t: 'PVP ARENA', glow: true, gc: C.secondary });
+  R.txt(ctx, '⚔️ Challenge a random opponent near your level', bx + 12, pvpY + 28, { s: 13, c: C.text });
+  R.txt(ctx, `⚡${ECO.pvpCost} stamina | Win gold, XP, glory`, bx + 12, pvpY + 44, { s: 11, c: C.staminaBar });
+  // HP
+  const hpY = pvpY + 68;
+  R.panel(ctx, bx, hpY, 760, 34);
+  R.txt(ctx, `HP: ${p.hp}/${p.max_hp}`, bx + 12, hpY + 10, { s: 12, b: true, c: C.hpBar });
+  R.bar(ctx, bx + 160, hpY + 10, 400, 11, p.hp / p.max_hp, C.hpBar);
+  R.txt(ctx, p.hp < p.max_hp ? `Heal: ${(p.max_hp - p.hp) * ECO.healPerHp | 0}g` : '✓ Full', bx + 748, hpY + 10, { s: 11, c: p.hp < p.max_hp ? C.gold : C.success, a: 'right' });
 }
 
-function drawCombatResult(ctx, body, player, result) {
-  const bx = body.x;
-  const by = body.y;
-  const won = result.won;
-  const enemyName = result.enemy?.name || result.boss?.name || result.opponent?.name || 'Unknown';
+export function drawResult(ctx, bx, by, bw, player, r) {
+  const won = r.won, name = r.enemy?.name || r.boss?.name || r.opponent?.name || '?';
+  R.panel(ctx, bx, by, bw, 48, { glow: true, gc: won ? C.success : C.danger });
+  R.txt(ctx, won ? '⚔️  VICTORY' : '💀  DEFEATED', bx + bw / 2, by + 6, { s: 24, b: true, c: won ? C.success : C.danger, a: 'center' });
+  R.txt(ctx, `vs ${name}`, bx + bw / 2, by + 32, { s: 12, c: C.textDim, a: 'center' });
 
-  // Victory / Defeat Banner
-  C.drawPanel(ctx, bx, by, body.w, 48, { glow: true, glowColor: won ? colors.success : colors.danger });
-  C.drawText(ctx, won ? '⚔️  VICTORY' : '💀  DEFEATED', 400, by + 6, {
-    size: 24, bold: true, color: won ? colors.success : colors.danger, align: 'center',
-  });
-  C.drawText(ctx, `vs ${enemyName}`, 400, by + 32, { size: 12, color: colors.textDim, align: 'center' });
-
-  // Battle Stats
-  C.drawPanel(ctx, bx, by + 58, 368, 120, { title: 'BATTLE STATS' });
+  R.panel(ctx, bx, by + 58, 368, 120, { t: 'BATTLE STATS' });
   let sy = by + 86;
-  const statRows = [
-    ['Damage Dealt', result.combat.damageDealt, colors.danger],
-    ['Damage Taken', result.combat.damageTaken, colors.hpBar],
-    ['Rounds', result.combat.rounds, colors.text],
-    ['HP Remaining', result.combat.attackerHp, colors.success],
-  ];
-  for (const [label, val, col] of statRows) {
-    C.drawText(ctx, label, bx + 12, sy, { size: 11, color: colors.textMuted });
-    C.drawText(ctx, `${val}`, bx + 356, sy, { size: 12, bold: true, color: col, align: 'right' });
-    sy += 20;
+  for (const [l, v, c] of [['Damage Dealt', r.combat.damageDealt, C.danger], ['Damage Taken', r.combat.damageTaken, C.hpBar], ['Rounds', r.combat.rounds, C.text], ['HP Left', r.combat.attackerHp, C.success]]) {
+    R.txt(ctx, l, bx + 12, sy, { s: 11, c: C.textMuted }); R.txt(ctx, `${v}`, bx + 356, sy, { s: 12, b: true, c, a: 'right' }); sy += 20;
   }
-  C.drawProgressBar(ctx, bx + 12, sy, 344, 7, result.combat.attackerHp / (player.max_hp || 100), colors.hpBar);
+  R.bar(ctx, bx + 12, sy, 344, 7, r.combat.attackerHp / (player.max_hp || 100), C.hpBar);
 
-  // Rewards
-  C.drawPanel(ctx, bx + 392, by + 58, 368, 120, { title: 'REWARDS', glow: won, glowColor: colors.gold });
+  R.panel(ctx, bx + 392, by + 58, 368, 120, { t: 'REWARDS', glow: won, gc: C.gold });
   let ry = by + 86;
-  C.drawText(ctx, '🪙 Gold', bx + 404, ry, { size: 12, color: colors.textMuted });
-  C.drawText(ctx, `+${C.formatNumber(result.gold)}`, bx + 748, ry, { size: 15, bold: true, color: colors.gold, align: 'right' });
-  ry += 22;
-  C.drawText(ctx, '✨ XP', bx + 404, ry, { size: 12, color: colors.textMuted });
-  C.drawText(ctx, `+${C.formatNumber(result.xp)}`, bx + 748, ry, { size: 15, bold: true, color: colors.xpBar, align: 'right' });
-  ry += 22;
+  R.txt(ctx, '🪙 Gold', bx + 404, ry, { s: 12, c: C.textMuted }); R.txt(ctx, `+${R.fmt(r.gold)}`, bx + 748, ry, { s: 15, b: true, c: C.gold, a: 'right' }); ry += 22;
+  R.txt(ctx, '✨ XP', bx + 404, ry, { s: 12, c: C.textMuted }); R.txt(ctx, `+${R.fmt(r.xp)}`, bx + 748, ry, { s: 15, b: true, c: C.xpBar, a: 'right' }); ry += 22;
+  if (r.lootItem) { R.txt(ctx, `🎁 ${r.lootItem.icon} ${r.lootItem.name}`, bx + 404, ry, { s: 12, b: true, c: R.rarityColor(r.lootItem.rarity) }); ry += 22; }
+  if (r.leveled) R.txt(ctx, `🎉 LEVEL UP → Lv.${r.newLevel}`, bx + 404, ry, { s: 13, b: true, c: C.accent });
 
-  if (result.lootItem) {
-    C.drawText(ctx, '🎁 LOOT', bx + 404, ry, { size: 12, bold: true, color: colors.legendary });
-    C.drawText(ctx, `${result.lootItem.icon} ${result.lootItem.name}`, bx + 748, ry, {
-      size: 12, bold: true, color: C.getRarityColor(result.lootItem.rarity), align: 'right',
-    });
-    ry += 22;
-  }
-
-  if (result.leveled) {
-    C.drawText(ctx, `🎉 LEVEL UP → Lv.${result.newLevel}`, bx + 404, ry, { size: 13, bold: true, color: colors.accent });
-  }
-
-  // Combat Log
-  C.drawPanel(ctx, bx, by + 188, body.w, 148, { title: 'COMBAT LOG' });
-  let logY = by + 214;
-  for (const entry of result.combat.log.slice(-9)) {
-    const isYou = entry.side === 'attacker';
-    C.drawText(ctx, `[${isYou ? 'YOU' : 'FOE'}]`, bx + 12, logY, { size: 10, bold: true, color: isYou ? colors.primary : colors.danger });
-    C.drawText(ctx, entry.text, bx + 60, logY, { size: 10, color: isYou ? colors.text : colors.textDim });
-    logY += 14;
+  R.panel(ctx, bx, by + 188, bw, 148, { t: 'COMBAT LOG' });
+  let ly = by + 214;
+  for (const e of r.combat.log.slice(-9)) {
+    R.txt(ctx, `[${e.side === 'attacker' ? 'YOU' : 'FOE'}] ${e.text}`, bx + 12, ly, { s: 10, c: e.side === 'attacker' ? C.primary : C.danger }); ly += 14;
   }
 }
