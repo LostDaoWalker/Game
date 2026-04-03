@@ -20,22 +20,23 @@ export function create() {
 export const toBuffer = canvas => canvas.toBuffer('image/png');
 
 export function bg(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#0c1018'); g.addColorStop(.5, '#0a0e17'); g.addColorStop(1, '#080b12');
-  ctx.fillStyle = g; rr(ctx, 0, 0, W, H, 12); ctx.fill();
-  // Grid — batched into single path
-  ctx.strokeStyle = 'rgba(168,140,255,.018)'; ctx.lineWidth = 1; ctx.beginPath();
+  // Warm deep parchment gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#1e1a12'); grad.addColorStop(.5, '#1a1610'); grad.addColorStop(1, '#15120c');
+  ctx.fillStyle = grad; rr(ctx, 0, 0, W, H, 12); ctx.fill();
+  // Subtle warm weave
+  ctx.strokeStyle = 'rgba(212,164,74,.02)'; ctx.lineWidth = 1; ctx.beginPath();
   for (let x = 0; x < W; x += 48) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
   for (let y = 0; y < H; y += 48) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
   ctx.stroke();
-  // Ambient glows
-  for (const [x, y, r, c, a] of [[80, 60, 90, C.secondary, .025], [W - 100, H - 80, 110, C.primary, .018], [W / 2, 250, 150, '#f59e0b', .012]]) {
+  // Golden ambient glows — warm hearth feeling
+  for (const [x, y, r, c, a] of [[90, 70, 100, C.primary, .03], [W - 110, H - 90, 120, C.accent, .02], [W / 2, 240, 160, '#d4a44a', .015]]) {
     const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
     gr.addColorStop(0, rgba(c, a)); gr.addColorStop(1, 'transparent');
     ctx.fillStyle = gr; ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  // Scanlines — single fillStyle set
-  ctx.fillStyle = 'rgba(0,0,0,.015)';
+  // Soft grain
+  ctx.fillStyle = 'rgba(0,0,0,.012)';
   for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
 }
 
@@ -108,7 +109,7 @@ export function rr(ctx, x, y, w, h, r) {
 // ── Layout ──
 export function layout(player, tab, opts = {}) {
   const { canvas, ctx } = create(); bg(ctx);
-  title(ctx, '◆ NEXUS', 20, 14, 22);
+  title(ctx, '☀ HALCYON', 20, 14, 22);
   if (opts.sub) txt(ctx, opts.sub, 132, 19, { s: 12, c: C.textMuted });
   let rx = 780;
   for (const s of (opts.stats || [{ l: '🪙', v: fmt(player.gold), c: C.gold }]).reverse()) {
@@ -117,7 +118,7 @@ export function layout(player, tab, opts = {}) {
   divider(ctx, 20, 38, 760);
   panel(ctx, 20, 400, 760, 40);
   for (let i = 0; i < TABS.length; i++) btn(ctx, 28 + i * 123, 405, 118, 28, TABS[i], C.primary, TABS[i] === tab.toUpperCase());
-  txt(ctx, `◆ NEXUS — ${THEME.tagline}`, 20, 458, { s: 9, c: C.textMuted });
+  txt(ctx, `☀ ${THEME.name} — ${THEME.tagline}`, 20, 458, { s: 9, c: C.textMuted });
   return { canvas, ctx, bx: 20, by: 46 };
 }
 
