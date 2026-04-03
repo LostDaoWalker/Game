@@ -21,8 +21,7 @@ export function getDb() {
       pvp_wins INTEGER DEFAULT 0, pvp_losses INTEGER DEFAULT 0,
       raids_completed INTEGER DEFAULT 0, bosses_killed INTEGER DEFAULT 0,
       networth INTEGER DEFAULT 100, peak_networth INTEGER DEFAULT 100,
-      mentor_id TEXT, pupil_count INTEGER DEFAULT 0, pending_skill_picks INTEGER DEFAULT 0,
-      current_view TEXT DEFAULT 'dashboard'
+      pending_skill_picks INTEGER DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS equipment (
       id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL REFERENCES players(id),

@@ -14,7 +14,7 @@ export function renderProfile(player, equipment, skills, rank) {
   R.txt(ctx, `Level ${player.level} Operative`, bx + 130, by + 62, { s: 12, c: C.secondary, a: 'center' });
   R.divider(ctx, bx + 20, by + 82, 220);
   let iy = by + 92;
-  for (const [l, v] of [['JOINED', new Date(player.created_at * 1000).toLocaleDateString()], ['PUPILS', `${player.pupil_count}`]]) {
+  for (const [l, v] of [['JOINED', new Date(player.created_at * 1000).toLocaleDateString()]]) {
     R.txt(ctx, l, bx + 20, iy, { s: 9, c: C.textMuted }); R.txt(ctx, v, bx + 240, iy, { s: 10, c: C.textDim, a: 'right' }); iy += 16;
   }
   R.labelBar(ctx, bx + 20, iy + 4, 220, 'XP', player.xp, player.xp_needed, C.xpBar);
