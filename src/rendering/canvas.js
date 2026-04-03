@@ -1,7 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { THEME, CANVAS, RARITIES, TABS } from '../core/config.js';
 const C = THEME.colors, W = CANVAS.width, H = CANVAS.height;
-
 export { C as colors };
 
 // ── rgba memoization — eliminates thousands of repeated string builds per frame ──

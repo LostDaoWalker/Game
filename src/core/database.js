@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
 
 let db;
-const cache = new Map();
+const stmtCache = new Map();
+const updCache = new Map();
 
 export function getDb() {
   if (db) return db;
@@ -13,34 +14,56 @@ export function getDb() {
     CREATE TABLE IF NOT EXISTS players (
       id TEXT PRIMARY KEY, username TEXT NOT NULL,
       created_at INTEGER DEFAULT (unixepoch()), last_active INTEGER DEFAULT (unixepoch()),
-      gold INTEGER DEFAULT 100, level INTEGER DEFAULT 1, xp INTEGER DEFAULT 0, xp_needed INTEGER DEFAULT 80,
-      hp INTEGER DEFAULT 100, max_hp INTEGER DEFAULT 100,
-      attack INTEGER DEFAULT 8, defense INTEGER DEFAULT 4, speed INTEGER DEFAULT 5, strength INTEGER DEFAULT 5,
-      stamina INTEGER DEFAULT 10, max_stamina INTEGER DEFAULT 10, stamina_regen_at INTEGER DEFAULT (unixepoch()),
-      wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0,
-      pvp_wins INTEGER DEFAULT 0, pvp_losses INTEGER DEFAULT 0,
-      raids_completed INTEGER DEFAULT 0, bosses_killed INTEGER DEFAULT 0,
-      networth INTEGER DEFAULT 100, peak_networth INTEGER DEFAULT 100,
-      pending_skill_picks INTEGER DEFAULT 0
+      gold INTEGER NOT NULL DEFAULT 100 CHECK(gold >= 0),
+      level INTEGER NOT NULL DEFAULT 1 CHECK(level >= 1 AND level <= 30),
+      xp INTEGER NOT NULL DEFAULT 0 CHECK(xp >= 0),
+      xp_needed INTEGER NOT NULL DEFAULT 80,
+      hp INTEGER NOT NULL DEFAULT 100 CHECK(hp >= 0),
+      max_hp INTEGER NOT NULL DEFAULT 100 CHECK(max_hp > 0),
+      attack INTEGER NOT NULL DEFAULT 8, defense INTEGER NOT NULL DEFAULT 4,
+      speed INTEGER NOT NULL DEFAULT 5, strength INTEGER NOT NULL DEFAULT 5,
+      stamina INTEGER NOT NULL DEFAULT 10 CHECK(stamina >= 0),
+      max_stamina INTEGER NOT NULL DEFAULT 10,
+      stamina_regen_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+      pvp_wins INTEGER NOT NULL DEFAULT 0, pvp_losses INTEGER NOT NULL DEFAULT 0,
+      raids_completed INTEGER NOT NULL DEFAULT 0, bosses_killed INTEGER NOT NULL DEFAULT 0,
+      networth INTEGER NOT NULL DEFAULT 100 CHECK(networth >= 0),
+      peak_networth INTEGER NOT NULL DEFAULT 100,
+      pending_skill_picks INTEGER NOT NULL DEFAULT 0 CHECK(pending_skill_picks >= 0)
     );
     CREATE TABLE IF NOT EXISTS equipment (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL REFERENCES players(id),
-      item_id TEXT NOT NULL, equipped INTEGER DEFAULT 0, obtained_at INTEGER DEFAULT (unixepoch())
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      item_id TEXT NOT NULL,
+      equipped INTEGER NOT NULL DEFAULT 0 CHECK(equipped IN (0, 1)),
+      obtained_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS skills (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL REFERENCES players(id),
-      skill_id TEXT NOT NULL, level INTEGER DEFAULT 1, UNIQUE(player_id, skill_id)
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      skill_id TEXT NOT NULL,
+      level INTEGER NOT NULL DEFAULT 1 CHECK(level >= 1),
+      UNIQUE(player_id, skill_id)
     );
     CREATE TABLE IF NOT EXISTS combat_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL,
-      opponent_type TEXT NOT NULL, opponent_name TEXT NOT NULL, won INTEGER NOT NULL,
-      damage_dealt INTEGER DEFAULT 0, damage_taken INTEGER DEFAULT 0,
-      gold_earned INTEGER DEFAULT 0, xp_earned INTEGER DEFAULT 0, loot_item TEXT,
-      timestamp INTEGER DEFAULT (unixepoch())
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL,
+      opponent_type TEXT NOT NULL CHECK(opponent_type IN ('pve', 'pvp', 'raid')),
+      opponent_name TEXT NOT NULL,
+      won INTEGER NOT NULL CHECK(won IN (0, 1)),
+      damage_dealt INTEGER NOT NULL DEFAULT 0,
+      damage_taken INTEGER NOT NULL DEFAULT 0,
+      gold_earned INTEGER NOT NULL DEFAULT 0,
+      xp_earned INTEGER NOT NULL DEFAULT 0,
+      loot_item TEXT,
+      timestamp INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE IF NOT EXISTS skill_offers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL REFERENCES players(id),
-      skill1 TEXT NOT NULL, skill2 TEXT NOT NULL, skill3 TEXT NOT NULL, UNIQUE(player_id)
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      skill1 TEXT NOT NULL, skill2 TEXT NOT NULL, skill3 TEXT NOT NULL,
+      UNIQUE(player_id)
     );
     CREATE INDEX IF NOT EXISTS idx_eq_pid ON equipment(player_id);
     CREATE INDEX IF NOT EXISTS idx_sk_pid ON skills(player_id);
@@ -50,18 +73,20 @@ export function getDb() {
   return db;
 }
 
-export function sql(q) { let s = cache.get(q); if (!s) { s = getDb().prepare(q); cache.set(q, s); } return s; }
+export function sql(q) {
+  let s = stmtCache.get(q);
+  if (!s) { s = getDb().prepare(q); stmtCache.set(q, s); }
+  return s;
+}
+
 export function tx(fn) { return getDb().transaction(fn)(); }
 
-// ── Per-shape update cache — avoids rebuilding SQL strings on every upd() call ──
-const updCache = new Map();
 export function upd(id, f) {
   const keys = Object.keys(f).sort();
   const shape = keys.join(',');
   let stmt = updCache.get(shape);
   if (!stmt) {
-    const sets = keys.map(k => `${k}=@${k}`).join(',');
-    stmt = getDb().prepare(`UPDATE players SET ${sets},last_active=unixepoch() WHERE id=@id`);
+    stmt = getDb().prepare(`UPDATE players SET ${keys.map(k => `${k}=@${k}`).join(',')},last_active=unixepoch() WHERE id=@id`);
     updCache.set(shape, stmt);
   }
   stmt.run({ ...f, id });
