@@ -21,7 +21,7 @@ export const RARITIES = {
 
 export const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
 export const EQUIPMENT_SLOTS = Object.keys(SLOT_ICONS);
-export const TABS = ['HOME', 'FIGHT', 'RAIDS', 'ASSETS', 'INVENTORY'];
+export const TABS = ['HOME', 'FIGHT', 'ASSETS', 'INVENTORY', 'PROFILE'];
 
 // ── Equipment ──
 // [id, name, slot, rarity, icon, stats, sellValue, dropLevel]

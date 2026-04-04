@@ -23,7 +23,6 @@ function renderView(playerId, view, combatResult) {
   Player.collectAssetIncome(playerId);
   Player.updateNetworth(playerId);
   const player = Player.getPlayer(playerId);
-
   const viewRenderers = {
     home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard(), Player.highestAssetIcon(playerId)),
     fight: () => renderFight(player, combatResult),
@@ -36,71 +35,43 @@ function renderView(playerId, view, combatResult) {
   return (viewRenderers[view] || viewRenderers.home)();
 }
 
+function formatCombatResult(result, view) {
+  if (!result.success) return result;
+  let message = result.won ? `⚔️ Beat ${result.foe.name}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${result.foe.name}. +${result.xp}xp`;
+  if (result.lootItem) message += result.autoEquipped ? ` 🎁 ${result.lootItem.icon} ${result.lootItem.name} (auto-equipped!)` : ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}!`;
+  if (result.leveled) message += ` 🎉 Level ${result.newLevel}!`;
+  if (result.stolen) message += ` 💰 Stole ${result.stolen}g!`;
+  return { success: true, message, view, extra: result };
+}
+
 function executeAction(playerId, action, args = {}) {
   Player.regenStamina(playerId);
-
-  const formatCombatResult = (result, view) => {
-    if (!result.success) return result;
-    const foeName = result.foe.name;
-    let message = result.won ? `⚔️ Beat ${foeName}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${foeName}. +${result.xp}xp`;
-    if (result.lootItem) message += ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}`;
-    if (result.autoEquipped) message += ` (auto-equipped!)`;
-    else if (result.lootItem) message += `!`;
-    if (result.leveled) message += ` 🎉 Level ${result.newLevel}!`;
-    return { success: true, message, view, extra: result };
-  };
-
   const actions = {
-    fight_enemy: () => {
-      lastEnemy.set(playerId, args.enemyId);
-      return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight');
+    // ── Primary loop ──
+    hustle: () => {
+      const { log } = Player.hustle(playerId);
+      return { success: true, message: log.join(' | ') || 'Nothing to do — out of stamina', view: 'home' };
     },
-    fight_again: () => {
-      const enemyId = lastEnemy.get(playerId) || Player.bestEnemy(playerId);
-      if (!enemyId) return { success: false, message: 'No enemy available' };
-      lastEnemy.set(playerId, enemyId);
-      return formatCombatResult(Player.fightEnemy(playerId, enemyId), 'fight');
-    },
-    quick_fight: () => {
-      const enemyId = Player.bestEnemy(playerId);
-      if (!enemyId) return { success: false, message: 'No enemy available' };
-      lastEnemy.set(playerId, enemyId);
-      return formatCombatResult(Player.fightEnemy(playerId, enemyId), 'fight');
-    },
-    pvp: () => {
-      const result = Player.pvpFight(playerId);
-      if (!result.success) return result;
-      const fmted = formatCombatResult(result, 'fight');
-      if (result.stolen) fmted.message += ` 💰 Stole ${result.stolen}g!`;
-      return fmted;
-    },
+    // ── Manual fight controls ──
+    fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },
+    fight_again: () => { const eid = lastEnemy.get(playerId) || Player.bestEnemy(playerId); if (!eid) return { success: false, message: 'No enemy' }; lastEnemy.set(playerId, eid); return formatCombatResult(Player.fightEnemy(playerId, eid), 'fight'); },
+    bulk_fight: () => { const eid = lastEnemy.get(playerId) || Player.bestEnemy(playerId); if (!eid) return { success: false, message: 'No enemy' }; lastEnemy.set(playerId, eid); const r = Player.bulkFight(playerId, eid, 5); return { success: true, message: `${r.wins}W/${r.losses}L +${r.goldEarned}g +${r.xpEarned}xp${r.loot.length ? ` ${r.loot.length} drops` : ''}${r.levelsGained ? ` 🎉 Lv.${r.endLevel}` : ''}`, view: 'fight' }; },
+    pvp: () => formatCombatResult(Player.pvpFight(playerId), 'fight'),
     raid: () => formatCombatResult(Player.fightRaid(playerId, args.raidId), 'raids'),
-    equip: () => { const result = Player.equipItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Equipped ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
-    sell: () => { const result = Player.sellItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Sold ${result.item.icon} ${result.item.name} for ${result.gold}g`, view: 'inventory' } : result; },
-    sell_junk: () => { const result = Player.sellAllJunk(playerId, 'common'); return result.success ? { success: true, message: `Sold ${result.count} items for ${result.gold}g`, view: 'inventory' } : result; },
-    sell_outgrown: () => { const result = Player.sellBelowEquipped(playerId); return result.success ? { success: true, message: `Sold ${result.count} outgrown items for ${result.gold}g`, view: 'inventory' } : result; },
-    bulk_fight: () => {
-      const enemyId = lastEnemy.get(playerId) || Player.bestEnemy(playerId);
-      if (!enemyId) return { success: false, message: 'No enemy available' };
-      lastEnemy.set(playerId, enemyId);
-      const result = Player.bulkFight(playerId, enemyId, 5);
-      let message = `${result.wins}W/${result.losses}L | +${result.goldEarned}g +${result.xpEarned}xp`;
-      if (result.loot.length) message += ` | ${result.loot.length} drops`;
-      if (result.levelsGained) message += ` | 🎉 Lv.${result.endLevel}`;
-      if (result.stoppedReason) message += ` | Stopped: ${result.stoppedReason}`;
-      return { success: true, message, view: 'fight' };
-    },
-    daily: () => { const result = Player.claimDaily(playerId); return result.success ? { success: true, message: `🎁 Daily bonus: +${result.gold}g (streak: ${result.streak}/${result.maxStreak})`, view: null } : result; },
-    buy_asset: () => { const result = Player.buyAsset(playerId, args.assetId); return result.success ? { success: true, message: `Bought ${result.asset.icon} ${result.asset.name}!`, view: 'assets' } : result; },
-    collect_income: () => { const result = Player.collectAssetIncome(playerId); return result.success ? { success: true, message: `Earned ${result.net}g (+${result.income} income, -${result.maintenance} maintenance)`, view: 'assets' } : result; },
-    pick_skill: () => { const result = Player.pickSkill(playerId, args.skillId); return result.success ? { success: true, message: `${result.skill.icon} ${result.skill.name} ${result.newLevel > 1 ? `→ Lv.${result.newLevel}` : 'learned'}!`, view: 'skills' } : result; },
-    heal: () => { const result = Player.healPlayer(playerId); return result.success ? { success: true, message: `Healed ${result.healed} HP (-${result.cost}g)`, view: null } : result; },
-    deposit: () => { const p = Player.getPlayer(playerId); const amount = (p.gold * 0.5) | 0 || p.gold; const result = Player.depositGold(playerId, amount); return result.success ? { success: true, message: `🏦 Deposited ${result.deposited}g (fee: ${result.fee}g)`, view: null } : result; },
-    withdraw: () => { const p = Player.getPlayer(playerId); const result = Player.withdrawGold(playerId, p.banked_gold); return result.success ? { success: true, message: `🏦 Withdrew ${result.withdrawn}g`, view: null } : result; },
-    hire_crew: () => { const result = Player.hireCrew(playerId, args.crewId); return result.success ? { success: true, message: `Hired ${result.crew.icon} ${result.crew.name}!`, view: 'home' } : result; },
-    synthesize: () => { const result = Player.synthesize(playerId, args.item1, args.item2, args.item3); return result.success ? { success: true, message: result.upgraded ? `✨ Upgraded! Got ${result.item.icon} ${result.item.name}!` : `🔨 Got ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
+    heal: () => { const r = Player.healPlayer(playerId); return r.success ? { success: true, message: `❤️ Healed ${r.healed} HP (-${r.cost}g)`, view: null } : r; },
+    // ── Economy ──
+    buy_asset: () => { const r = Player.buyAsset(playerId, args.assetId); return r.success ? { success: true, message: `Bought ${r.asset.icon} ${r.asset.name}!`, view: 'assets' } : r; },
+    hire_crew: () => { const r = Player.hireCrew(playerId, args.crewId); return r.success ? { success: true, message: `Hired ${r.crew.icon} ${r.crew.name}!`, view: 'home' } : r; },
+    deposit: () => { const p = Player.getPlayer(playerId); const amt = (p.gold * 0.5) | 0 || p.gold; const r = Player.depositGold(playerId, amt); return r.success ? { success: true, message: `🏦 Banked ${r.deposited}g`, view: null } : r; },
+    withdraw: () => { const p = Player.getPlayer(playerId); const r = Player.withdrawGold(playerId, p.banked_gold); return r.success ? { success: true, message: `🏦 Withdrew ${r.withdrawn}g`, view: null } : r; },
+    daily: () => { const r = Player.claimDaily(playerId); return r.success ? { success: true, message: `🎁 +${r.gold}g (streak ${r.streak}/${r.maxStreak})`, view: null } : r; },
+    // ── Inventory ──
+    equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
+    sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
+    sell_outgrown: () => { const r = Player.sellBelowEquipped(playerId); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
+    synthesize: () => { const r = Player.synthesize(playerId, args.item1, args.item2, args.item3); return r.success ? { success: true, message: `${r.upgraded ? '✨' : '🔨'} ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
+    pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}`, view: 'skills' } : r; },
   };
-
   const handler = actions[action];
   if (!handler) return { success: false, message: 'Unknown action' };
   return handler();
@@ -108,18 +79,18 @@ function executeAction(playerId, action, args = {}) {
 
 // ── Discord Handlers ──
 
-function buildSelectMenu(customId, placeholder, options) {
+function selectMenu(id, placeholder, options) {
   if (!options.length) options = [{ label: 'Nothing available', description: '-', value: 'none' }];
-  return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(customId).setPlaceholder(placeholder).addOptions(options.slice(0, 25)));
+  return new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).addOptions(options.slice(0, 25)));
 }
 
-async function sendView(interaction, playerId, view, combatResult, isReply) {
-  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, combatResult), { name: 'halcyon.png' })], components: buildUI(view, playerId), content: '' };
+async function sendView(interaction, playerId, view, extra, isReply) {
+  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, extra), { name: 'halcyon.png' })], components: buildUI(view, playerId), content: '' };
   isReply ? await interaction.reply(payload) : await interaction.update(payload);
 }
 
-async function sendActionResult(interaction, playerId, result, fallbackView) {
-  const view = result.view || fallbackView || activeView.get(playerId) || 'home';
+async function sendResult(interaction, playerId, result, fallback) {
+  const view = result.view || fallback || activeView.get(playerId) || 'home';
   activeView.set(playerId, view);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
@@ -139,128 +110,86 @@ export async function handleButton(interaction) {
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
   const [action, ...args] = interaction.customId.split(':');
   if (action === 'nav') { activeView.set(playerId, args[0]); return sendView(interaction, playerId, args[0]); }
-  if (action === 'refresh') return sendView(interaction, playerId, activeView.get(playerId) || 'home');
-  return sendActionResult(interaction, playerId, executeAction(playerId, action, {}));
+  return sendResult(interaction, playerId, executeAction(playerId, action, {}));
 }
 
 export async function handleSelectMenu(interaction) {
   const playerId = interaction.user.id;
   const [menuId] = interaction.customId.split(':');
-  const selectedValue = interaction.values[0];
+  const val = interaction.values[0];
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
-
-  const menuActions = {
-    buy_asset: ['buy_asset', { assetId: selectedValue }],
-    hire_crew: ['hire_crew', { crewId: selectedValue }],
-    synthesize_select: ['synthesize', { item1: +selectedValue.split(',')[0], item2: +selectedValue.split(',')[1], item3: +selectedValue.split(',')[2] }],
-    fight_select: ['fight_enemy', { enemyId: selectedValue }],
-    raid_select: ['raid', { raidId: selectedValue }],
-    equip: ['equip', { itemRowId: +selectedValue }],
-    sell: ['sell', { itemRowId: +selectedValue }],
-    pick_skill: ['pick_skill', { skillId: selectedValue }],
+  const map = {
+    fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }],
+    equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }],
+    buy_asset: ['buy_asset', { assetId: val }], hire_crew: ['hire_crew', { crewId: val }],
+    synthesize_select: ['synthesize', { item1: +val.split(',')[0], item2: +val.split(',')[1], item3: +val.split(',')[2] }],
   };
-  const [action, args] = menuActions[menuId] || ['unknown', {}];
-  const fallbackView = { equip: 'inventory', sell: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', synthesize_select: 'inventory' }[menuId];
-  return sendActionResult(interaction, playerId, executeAction(playerId, action, args), fallbackView);
+  const [action, args] = map[menuId] || ['unknown', {}];
+  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', synthesize_select: 'inventory' }[menuId];
+  return sendResult(interaction, playerId, executeAction(playerId, action, args), fallback);
 }
 
-// ── UI Builder ──
+// ── UI ──
+// Row 1: HUSTLE (the one button) + secondary actions
+// Row 2: Nav tabs for detail views (only when you want to dig in)
+// Row 3+: Context-specific menus per view
 
 function buildUI(view, playerId) {
+  const player = Player.getPlayer(playerId);
   const rows = [
-    new ActionRowBuilder().addComponents(...TABS.slice(0, 5).map(tab =>
-      new ButtonBuilder().setCustomId(`nav:${tab.toLowerCase()}`).setLabel(tab)
-        .setStyle(view === tab.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Primary)
-        .setDisabled(view === tab.toLowerCase()))),
+    // THE button
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('nav:skills').setLabel('SKILLS')
-        .setStyle(view === 'skills' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'skills'),
-      new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE')
-        .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'profile'),
-      new ButtonBuilder().setCustomId('quick_fight').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('daily').setLabel('🎁 Daily').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary)),
+      new ButtonBuilder().setCustomId('hustle').setLabel('💰 HUSTLE').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('daily').setLabel('🎁').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('deposit').setLabel('🏦').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('pvp').setLabel('🥊').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('heal').setLabel('❤️').setStyle(ButtonStyle.Secondary)),
+    // Nav — only for when you want details
+    new ActionRowBuilder().addComponents(
+      ...['HOME', 'FIGHT', 'ASSETS', 'INVENTORY', 'PROFILE'].map(tab =>
+        new ButtonBuilder().setCustomId(`nav:${tab.toLowerCase()}`).setLabel(tab)
+          .setStyle(view === tab.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Secondary)
+          .setDisabled(view === tab.toLowerCase()))),
   ];
 
-  const player = Player.getPlayer(playerId);
-
+  // Context menus — only on detail views
   if (view === 'fight') {
-    // Fight-again + enemy select
-    const fightRow = new ActionRowBuilder().addComponents(
+    rows.push(new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('fight_again').setLabel('⚔️ Again').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('bulk_fight').setLabel('⚔️ x5').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('pvp').setLabel('🥊 PVP').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success));
-    rows.push(fightRow);
-    if (player) rows.push(buildSelectMenu('fight_select', 'Choose enemy...',
-      Object.entries(ENEMIES).filter(([, enemy]) => player.level >= enemy.minLevel).map(([id, enemy]) => ({
-        label: `${enemy.icon} ${enemy.name}`, description: `Lv.${enemy.minLevel}+ | ⚡${ZONES[enemy.zone]?.staminaCost || 1}`, value: id,
-      }))));
+      new ButtonBuilder().setCustomId('bulk_fight').setLabel('⚔️ x5').setStyle(ButtonStyle.Danger)));
+    if (player) rows.push(selectMenu('fight_select', 'Choose enemy...',
+      Object.entries(ENEMIES).filter(([, e]) => player.level >= e.minLevel).map(([id, e]) => ({
+        label: `${e.icon} ${e.name}`, description: `Lv.${e.minLevel}+ | ⚡${ZONES[e.zone]?.staminaCost || 1}`, value: id }))));
   }
-
+  if (view === 'raids' && player) rows.push(selectMenu('raid_select', 'Choose boss...',
+    Object.entries(RAIDS).filter(([, r]) => player.level >= r.minLevel).map(([id, r]) => ({
+      label: `${r.icon} ${r.name}`, description: `⚡${r.staminaCost} | ❤${r.hp}`, value: id }))));
   if (view === 'assets' && player) {
-    const ownedSet = new Set(Player.getPlayerAssets(playerId).map(row => row.asset_id));
-    const buyable = Object.entries(ASSETS).filter(([id, asset]) => !ownedSet.has(id) && player.level >= asset.minLevel);
-    if (buyable.length) rows.push(buildSelectMenu('buy_asset', '🏠 Buy asset...',
-      buyable.map(([id, asset]) => ({
-        label: `${asset.icon} ${asset.name} (${asset.cost}g)`,
-        description: `+${asset.incomePerHr}/hr income | +${asset.networthValue} networth`,
-        value: id,
-      }))));
-    if (ownedSet.size) rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('collect_income').setLabel('💰 Collect Income').setStyle(ButtonStyle.Success)));
+    const owned = new Set(Player.getPlayerAssets(playerId).map(r => r.asset_id));
+    const buyable = Object.entries(ASSETS).filter(([id, a]) => !owned.has(id) && player.level >= a.minLevel);
+    if (buyable.length) rows.push(selectMenu('buy_asset', '🏠 Buy asset...',
+      buyable.map(([id, a]) => ({ label: `${a.icon} ${a.name} (${a.cost}g)`, description: `+${a.incomePerHr}/hr | +${a.networthValue} net`, value: id }))));
   }
-
-  if (view === 'raids' && player) rows.push(buildSelectMenu('raid_select', 'Choose boss...',
-    Object.entries(RAIDS).filter(([, raid]) => player.level >= raid.minLevel).map(([id, raid]) => ({
-      label: `${raid.icon} ${raid.name}`, description: `⚡${raid.staminaCost} | ❤${raid.hp}`, value: id,
-    }))));
-
   if (view === 'inventory' && player) {
-    const unequipped = Player.getAllEquipment(playerId).filter(row => !row.equipped);
+    const unequipped = Player.getAllEquipment(playerId).filter(r => !r.equipped);
     if (unequipped.length) {
-      rows.push(buildSelectMenu('equip', 'Equip item...',
-        unequipped.slice(0, 24).map(row => {
-          const config = EQUIPMENT[row.item_id];
-          return config ? { label: `${config.icon} ${config.name} (${config.slot})`, description: Object.entries(config.stats).map(([stat, val]) => `+${val} ${stat}`).join(', '), value: `${row.id}` } : null;
-        }).filter(Boolean)));
+      rows.push(selectMenu('equip', 'Equip item...',
+        unequipped.slice(0, 24).map(r => { const c = EQUIPMENT[r.item_id]; return c ? { label: `${c.icon} ${c.name} (${c.slot})`, description: Object.entries(c.stats).map(([k, v]) => `+${v} ${k}`).join(', '), value: `${r.id}` } : null; }).filter(Boolean)));
       rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sell_junk').setLabel('💰 Sell Junk').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('sell_outgrown').setLabel('💰 Sell Outgrown').setStyle(ButtonStyle.Secondary)));
-      // Synthesis — offer if 3+ unequipped items exist
-      if (unequipped.length >= 3 && player.gold >= SYNTHESIS.cost) {
-        const top3 = unequipped.slice(0, 3);
-        const names = top3.map(r => EQUIPMENT[r.item_id]?.name || '?').join(' + ');
-        rows.push(buildSelectMenu('synthesize_select', `🔨 Synthesize (${SYNTHESIS.cost}g)...`,
-          [{ label: `Combine: ${names}`, description: `Fuse 3 weakest items for a chance at rarity upgrade`, value: top3.map(r => r.id).join(',') }]));
-      }
+        new ButtonBuilder().setCustomId('sell_junk').setLabel('Sell Junk').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('sell_outgrown').setLabel('Sell Outgrown').setStyle(ButtonStyle.Secondary)));
     }
   }
-
   if (view === 'home' && player) {
-    // Bank + Crew on home screen
-    const bankRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('deposit').setLabel(`🏦 Bank 50% (${player.banked_gold}g safe)`).setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('withdraw').setLabel('🏦 Withdraw All').setStyle(ButtonStyle.Secondary).setDisabled(!player.banked_gold),
-      new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success));
-    rows.push(bankRow);
-    const hiredSet = new Set(Player.getPlayerCrew(playerId).map(row => row.crew_id));
-    const hireable = Object.entries(CREW).filter(([id, crew]) => !hiredSet.has(id) && player.level >= crew.minLevel);
-    if (hireable.length) rows.push(buildSelectMenu('hire_crew', '🤵 Hire crew...',
-      hireable.map(([id, crew]) => ({
-        label: `${crew.icon} ${crew.name} (${crew.cost}g)`,
-        description: `+${crew.bonusValue} ${crew.bonusType}`,
-        value: id,
-      }))));
+    const hired = new Set(Player.getPlayerCrew(playerId).map(r => r.crew_id));
+    const hireable = Object.entries(CREW).filter(([id, c]) => !hired.has(id) && player.level >= c.minLevel);
+    if (hireable.length) rows.push(selectMenu('hire_crew', '🤵 Hire crew...',
+      hireable.map(([id, c]) => ({ label: `${c.icon} ${c.name} (${c.cost}g)`, description: `+${c.bonusValue} ${c.bonusType}`, value: id }))));
   }
-
-  if (view === 'skills' && player?.pending_skill_picks > 0) {
+  if (player?.pending_skill_picks > 0) {
     const offers = Player.getSkillOffers(playerId);
-    if (offers) rows.push(buildSelectMenu('pick_skill', '🎯 Pick skill...',
-      [offers.skill1, offers.skill2, offers.skill3]
-        .map(id => SKILLS[id] ? { label: `${SKILLS[id].icon} ${SKILLS[id].name}`, description: SKILLS[id].description.slice(0, 50), value: id } : null)
-        .filter(Boolean)));
+    if (offers) rows.push(selectMenu('pick_skill', '🎯 Pick skill...',
+      [offers.skill1, offers.skill2, offers.skill3].map(id => SKILLS[id] ? { label: `${SKILLS[id].icon} ${SKILLS[id].name}`, description: SKILLS[id].description.slice(0, 50), value: id } : null).filter(Boolean)));
   }
-
   return rows;
 }
