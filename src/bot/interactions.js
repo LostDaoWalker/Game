@@ -49,8 +49,9 @@ function executeAction(playerId, action, args = {}) {
   const actions = {
     // ── Primary loop ──
     hustle: () => {
-      const { log } = Player.hustle(playerId);
-      return { success: true, message: log.join(' | ') || 'Nothing to do — out of stamina', view: 'home' };
+      const { log, player } = Player.hustle(playerId);
+      if (player.pending_skill_picks > 0) log.push(`🎯 ${player.pending_skill_picks} skill pick${player.pending_skill_picks > 1 ? 's' : ''} waiting!`);
+      return { success: true, message: log.join(' | ') || 'Out of stamina — wait or heal', view: 'home' };
     },
     // ── Manual fight controls ──
     fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },

@@ -661,85 +661,35 @@ export function synthesize(playerId, itemRowId1, itemRowId2, itemRowId3) {
   });
 }
 
-// ── HUSTLE — one-button game loop ──
-// Fights best enemy, auto-heals, auto-banks, auto-buys next affordable asset/crew, auto-sells junk, auto-picks skill.
+// ── HUSTLE — core grind loop, spending decisions are still yours ──
 
 export function hustle(playerId) {
   regenStamina(playerId);
   collectAssetIncome(playerId);
   const log = [];
 
-  // Daily bonus if available
-  const daily = claimDaily(playerId);
-  if (daily.success) log.push(`🎁 +${daily.gold}g daily (streak ${daily.streak})`);
-
-  // Fight best enemy (bulk 5 if stamina allows)
+  // Fight best enemy x5
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
     const bulk = bulkFight(playerId, enemyId, 5);
     log.push(`⚔️ ${bulk.wins}W/${bulk.losses}L +${bulk.goldEarned}g +${bulk.xpEarned}xp`);
     if (bulk.loot.length) log.push(`🎁 ${bulk.loot.length} drops`);
-    if (bulk.levelsGained) log.push(`🎉 → Lv.${bulk.endLevel} (stamina refilled!)`);
+    if (bulk.levelsGained) log.push(`🎉 → Lv.${bulk.endLevel}`);
     if (bulk.stoppedReason) log.push(`⏸️ ${bulk.stoppedReason}`);
+  } else {
+    log.push('⏸️ No enemies available');
   }
 
   // Auto-heal if below 50% HP
   const afterFight = getPlayer(playerId);
   if (afterFight.hp < afterFight.max_hp * 0.5) {
     const heal = healPlayer(playerId);
-    if (heal.success) log.push(`❤️ Healed ${heal.healed} HP (-${heal.cost}g)`);
+    if (heal.success) log.push(`❤️ Healed (-${heal.cost}g)`);
   }
 
   // Auto-sell junk
   const junk = sellAllJunk(playerId, 'common');
-  if (junk.success) log.push(`🗑️ Sold ${junk.count} junk (+${junk.gold}g)`);
-
-  // Auto-synthesize if 3+ unequipped items
-  const unequipped = getAllEquipment(playerId).filter(r => !r.equipped);
-  if (unequipped.length >= 3) {
-    const synth = synthesize(playerId, unequipped[0].id, unequipped[1].id, unequipped[2].id);
-    if (synth.success) log.push(`🔨 ${synth.upgraded ? '✨ Upgraded!' : 'Forged'} ${synth.item.icon} ${synth.item.name}`);
-  }
-
-  // Auto-bank if gold > 500 (bank half)
-  const preBuy = getPlayer(playerId);
-  if (preBuy.gold > 500) {
-    const bankAmount = (preBuy.gold * 0.3) | 0;
-    const dep = depositGold(playerId, bankAmount);
-    if (dep.success) log.push(`🏦 Banked ${dep.deposited}g`);
-  }
-
-  // Auto-buy best affordable asset
-  const current = getPlayer(playerId);
-  const ownedAssets = new Set(getPlayerAssets(playerId).map(r => r.asset_id));
-  const affordableAsset = Object.entries(ASSETS)
-    .filter(([id, a]) => !ownedAssets.has(id) && current.level >= a.minLevel && current.gold >= a.cost)
-    .sort((a, b) => b[1].cost - a[1].cost)[0];
-  if (affordableAsset) {
-    const buy = buyAsset(playerId, affordableAsset[0]);
-    if (buy.success) log.push(`🏠 Bought ${buy.asset.icon} ${buy.asset.name}!`);
-  }
-
-  // Auto-hire best affordable crew
-  const afterBuy = getPlayer(playerId);
-  const hiredCrew = new Set(getPlayerCrew(playerId).map(r => r.crew_id));
-  const affordableCrew = Object.entries(CREW)
-    .filter(([id, c]) => !hiredCrew.has(id) && afterBuy.level >= c.minLevel && afterBuy.gold >= c.cost)
-    .sort((a, b) => b[1].cost - a[1].cost)[0];
-  if (affordableCrew) {
-    const hire = hireCrew(playerId, affordableCrew[0]);
-    if (hire.success) log.push(`🤵 Hired ${hire.crew.icon} ${hire.crew.name}!`);
-  }
-
-  // Auto-pick skill if available
-  const postAll = getPlayer(playerId);
-  if (postAll.pending_skill_picks > 0) {
-    const offers = getSkillOffers(playerId);
-    if (offers) {
-      const pick = pickSkill(playerId, offers.skill1);
-      if (pick.success) log.push(`🎯 ${pick.skill.icon} ${pick.skill.name}${pick.newLevel > 1 ? ` Lv.${pick.newLevel}` : ''}`);
-    }
-  }
+  if (junk.success) log.push(`🗑️ ${junk.count} junk → ${junk.gold}g`);
 
   updateNetworth(playerId);
   return { log, player: getPlayer(playerId) };
