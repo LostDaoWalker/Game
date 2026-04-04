@@ -21,7 +21,7 @@ export const RARITIES = {
 
 export const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '⛑️', boots: '👟', accessory: '💍' };
 export const EQUIPMENT_SLOTS = Object.keys(SLOT_ICONS);
-export const TABS = ['HOME', 'FIGHT', 'RAIDS', 'INVENTORY', 'SKILLS', 'PROFILE'];
+export const TABS = ['HOME', 'FIGHT', 'RAIDS', 'ASSETS', 'INVENTORY'];
 
 // ── Equipment ──
 // [id, name, slot, rarity, icon, stats, sellValue, dropLevel]
@@ -122,6 +122,37 @@ export const ZONES = Object.freeze({
   district:  { name: 'The District',  icon: '🏙️', minLevel: 5,  staminaCost: 2 },
   midtown:   { name: 'Midtown',       icon: '🏢', minLevel: 10, staminaCost: 3 },
   penthouse: { name: 'The Penthouse', icon: '💎', minLevel: 16, staminaCost: 4 },
+});
+
+// ── Assets — networth is the goal, income has diminishing ROI ──
+// [id, name, icon, tier, cost, incomePerHr, maintenancePerHr, networthValue, minLevel]
+// Anti-snowball: maintenance scales, ROI shrinks at higher tiers
+const AS = [
+  // Hustle tier — cheap, decent ROI
+  ['lemonade_stand','Lemonade Stand','🍋','hustle',200,12,2,300,1],
+  ['corner_store','Corner Store','🏪','hustle',500,25,5,750,2],
+  ['food_truck','Food Truck','🚚','hustle',1200,50,12,1800,4],
+  // Grind tier — moderate cost, income ceiling
+  ['barbershop','Barbershop','💈','grind',3000,90,25,4500,6],
+  ['laundromat','Laundromat','🧺','grind',6000,150,50,9000,8],
+  ['auto_shop','Auto Shop','🔧','grind',12000,250,90,18000,10],
+  // Stack tier — expensive, lower ROI but big networth
+  ['nightclub','Nightclub','🎵','stack',30000,400,160,50000,13],
+  ['restaurant','Restaurant','🍽️','stack',60000,650,280,100000,15],
+  ['apartment_bldg','Apartment Building','🏢','stack',120000,1000,450,200000,18],
+  // Flex tier — luxury, near-zero ROI, massive networth
+  ['penthouse','Penthouse Suite','🏙️','flex',300000,500,400,600000,20],
+  ['supercar','Supercar','🏎️','flex',500000,200,180,1000000,22],
+  ['yacht','Yacht','🛥️','flex',1000000,100,90,2000000,25],
+];
+export const ASSETS = Object.fromEntries(AS.map(([id,name,icon,tier,cost,incomePerHr,maintenancePerHr,networthValue,minLevel]) =>
+  [id, Object.freeze({ name, icon, tier, cost, incomePerHr, maintenancePerHr, networthValue, minLevel })]));
+
+export const ASSET_TIERS = Object.freeze({
+  hustle: { name: 'Hustle', color: '#a1a1aa' },
+  grind:  { name: 'Grind',  color: '#4ade80' },
+  stack:  { name: 'Stack',  color: '#38bdf8' },
+  flex:   { name: 'Flex',   color: '#f5c542' },
 });
 
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1, max: 30 });

@@ -65,6 +65,15 @@ export function getDb() {
       skill1 TEXT NOT NULL, skill2 TEXT NOT NULL, skill3 TEXT NOT NULL,
       UNIQUE(player_id)
     );
+    CREATE TABLE IF NOT EXISTS assets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      asset_id TEXT NOT NULL,
+      purchased_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      last_collected INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(player_id, asset_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_assets_pid ON assets(player_id);
     CREATE INDEX IF NOT EXISTS idx_eq_pid ON equipment(player_id);
     CREATE INDEX IF NOT EXISTS idx_sk_pid ON skills(player_id);
     CREATE INDEX IF NOT EXISTS idx_cl_pid ON combat_log(player_id);

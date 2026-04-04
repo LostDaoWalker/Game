@@ -1,12 +1,13 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
 import { renderInventory } from '../rendering/views/inventory.js';
 import { renderSkills } from '../rendering/views/skills.js';
 import { renderProfile } from '../rendering/views/profile.js';
+import { renderAssets } from '../rendering/views/assets.js';
 
 const activeView = new Map();
 const lastEnemy = new Map();
@@ -19,6 +20,7 @@ const skillConfigs = playerId => Player.getPlayerSkills(playerId)
 function renderView(playerId, view, combatResult) {
   if (!Player.getPlayer(playerId)) return null;
   Player.regenStamina(playerId);
+  Player.collectAssetIncome(playerId);
   Player.updateNetworth(playerId);
   const player = Player.getPlayer(playerId);
 
@@ -26,6 +28,7 @@ function renderView(playerId, view, combatResult) {
     home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
     fight: () => renderFight(player, combatResult),
     raids: () => renderRaids(player, combatResult),
+    assets: () => renderAssets(player, Player.getPlayerAssets(playerId)),
     inventory: () => renderInventory(player, Player.getAllEquipment(playerId), Player.getEquippedItems(playerId)),
     skills: () => renderSkills(player, skillConfigs(playerId), Player.getSkillOffers(playerId)),
     profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), Player.getRank(playerId)),
@@ -69,6 +72,8 @@ function executeAction(playerId, action, args = {}) {
     equip: () => { const result = Player.equipItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Equipped ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
     sell: () => { const result = Player.sellItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Sold ${result.item.icon} ${result.item.name} for ${result.gold}g`, view: 'inventory' } : result; },
     sell_junk: () => { const result = Player.sellAllJunk(playerId, 'common'); return result.success ? { success: true, message: `Sold ${result.count} items for ${result.gold}g`, view: 'inventory' } : result; },
+    buy_asset: () => { const result = Player.buyAsset(playerId, args.assetId); return result.success ? { success: true, message: `Bought ${result.asset.icon} ${result.asset.name}!`, view: 'assets' } : result; },
+    collect_income: () => { const result = Player.collectAssetIncome(playerId); return result.success ? { success: true, message: `Earned ${result.net}g (+${result.income} income, -${result.maintenance} maintenance)`, view: 'assets' } : result; },
     pick_skill: () => { const result = Player.pickSkill(playerId, args.skillId); return result.success ? { success: true, message: `${result.skill.icon} ${result.skill.name} ${result.newLevel > 1 ? `→ Lv.${result.newLevel}` : 'learned'}!`, view: 'skills' } : result; },
     heal: () => { const result = Player.healPlayer(playerId); return result.success ? { success: true, message: `Healed ${result.healed} HP (-${result.cost}g)`, view: null } : result; },
   };
@@ -122,6 +127,7 @@ export async function handleSelectMenu(interaction) {
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
 
   const menuActions = {
+    buy_asset: ['buy_asset', { assetId: selectedValue }],
     fight_select: ['fight_enemy', { enemyId: selectedValue }],
     raid_select: ['raid', { raidId: selectedValue }],
     equip: ['equip', { itemRowId: +selectedValue }],
@@ -129,7 +135,7 @@ export async function handleSelectMenu(interaction) {
     pick_skill: ['pick_skill', { skillId: selectedValue }],
   };
   const [action, args] = menuActions[menuId] || ['unknown', {}];
-  const fallbackView = { equip: 'inventory', sell: 'inventory', pick_skill: 'skills' }[menuId];
+  const fallbackView = { equip: 'inventory', sell: 'inventory', pick_skill: 'skills', buy_asset: 'assets' }[menuId];
   return sendActionResult(interaction, playerId, executeAction(playerId, action, args), fallbackView);
 }
 
@@ -142,11 +148,11 @@ function buildUI(view, playerId) {
         .setStyle(view === tab.toLowerCase() ? ButtonStyle.Success : ButtonStyle.Primary)
         .setDisabled(view === tab.toLowerCase()))),
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('nav:skills').setLabel('SKILLS')
+        .setStyle(view === 'skills' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'skills'),
       new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE')
-        .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary)
-        .setDisabled(view === 'profile'),
+        .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'profile'),
       new ButtonBuilder().setCustomId('quick_fight').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('pvp').setLabel('🥊 PVP').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary)),
   ];
@@ -162,6 +168,19 @@ function buildUI(view, playerId) {
       Object.entries(ENEMIES).filter(([, enemy]) => player.level >= enemy.minLevel).map(([id, enemy]) => ({
         label: `${enemy.icon} ${enemy.name}`, description: `Lv.${enemy.minLevel}+ | ⚡${ZONES[enemy.zone]?.staminaCost || 1}`, value: id,
       }))));
+  }
+
+  if (view === 'assets' && player) {
+    const ownedSet = new Set(Player.getPlayerAssets(playerId).map(row => row.asset_id));
+    const buyable = Object.entries(ASSETS).filter(([id, asset]) => !ownedSet.has(id) && player.level >= asset.minLevel);
+    if (buyable.length) rows.push(buildSelectMenu('buy_asset', '🏠 Buy asset...',
+      buyable.map(([id, asset]) => ({
+        label: `${asset.icon} ${asset.name} (${asset.cost}g)`,
+        description: `+${asset.incomePerHr}/hr income | +${asset.networthValue} networth`,
+        value: id,
+      }))));
+    if (ownedSet.size) rows.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('collect_income').setLabel('💰 Collect Income').setStyle(ButtonStyle.Success)));
   }
 
   if (view === 'raids' && player) rows.push(buildSelectMenu('raid_select', 'Choose boss...',

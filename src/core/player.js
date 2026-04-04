@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -360,6 +360,49 @@ function rollLoot(playerLevel, skillLevels) {
   return candidates.length ? candidates[randBetween(0, candidates.length - 1)][0] : null;
 }
 
+// ── Assets ──
+
+export const getPlayerAssets = playerId => sql('SELECT * FROM assets WHERE player_id=?').all(playerId);
+
+export function buyAsset(playerId, assetId) {
+  const config = ASSETS[assetId];
+  if (!config) return { success: false, error: 'Unknown asset' };
+  const player = getPlayer(playerId);
+  if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
+  const existing = sql('SELECT id FROM assets WHERE player_id=? AND asset_id=?').get(playerId, assetId);
+  if (existing) return { success: false, error: 'Already owned' };
+  if (player.gold < config.cost) return { success: false, error: `Need ${config.cost}g` };
+  return tx(() => {
+    upd(playerId, { gold: floorZero(player.gold - config.cost) });
+    sql('INSERT INTO assets(player_id,asset_id) VALUES(?,?)').run(playerId, assetId);
+    return { success: true, asset: config };
+  });
+}
+
+export function collectAssetIncome(playerId) {
+  const now = Date.now() / 1000 | 0;
+  const owned = getPlayerAssets(playerId);
+  if (!owned.length) return { success: false, error: 'No assets' };
+  return tx(() => {
+    let totalIncome = 0, totalMaintenance = 0;
+    for (const row of owned) {
+      const config = ASSETS[row.asset_id];
+      if (!config) continue;
+      const hoursElapsed = Math.min(24, (now - row.last_collected) / 3600);  // cap at 24h — no AFK snowball
+      if (hoursElapsed < 0.01) continue;
+      totalIncome += (config.incomePerHr * hoursElapsed) | 0;
+      totalMaintenance += (config.maintenancePerHr * hoursElapsed) | 0;
+      sql('UPDATE assets SET last_collected=? WHERE id=?').run(now, row.id);
+    }
+    const netEarnings = floorZero(totalIncome - totalMaintenance);
+    if (netEarnings > 0) {
+      const player = getPlayer(playerId);
+      upd(playerId, { gold: floorZero(player.gold + netEarnings) });
+    }
+    return { success: true, income: totalIncome, maintenance: totalMaintenance, net: netEarnings };
+  });
+}
+
 // ── Healing / Networth ──
 
 export function healPlayer(playerId) {
@@ -375,7 +418,9 @@ export function updateNetworth(playerId) {
   const player = getPlayer(playerId);
   let equipValue = 0;
   for (const row of getAllEquipment(playerId)) equipValue += EQUIPMENT[row.item_id]?.sellValue || 0;
-  const networth = floorZero(player.gold * ECO.networth.gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level);
+  let assetValue = 0;
+  for (const row of getPlayerAssets(playerId)) assetValue += ASSETS[row.asset_id]?.networthValue || 0;
+  const networth = floorZero(player.gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level + assetValue);
   upd(playerId, { networth, peak_networth: Math.max(networth, player.peak_networth) });
   return networth;
 }
