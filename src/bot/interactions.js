@@ -25,7 +25,7 @@ function renderView(playerId, view, combatResult) {
   const player = Player.getPlayer(playerId);
 
   const viewRenderers = {
-    home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
+    home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard(), Player.highestAssetIcon(playerId)),
     fight: () => renderFight(player, combatResult),
     raids: () => renderRaids(player, combatResult),
     assets: () => renderAssets(player, Player.getPlayerAssets(playerId)),
@@ -72,6 +72,19 @@ function executeAction(playerId, action, args = {}) {
     equip: () => { const result = Player.equipItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Equipped ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
     sell: () => { const result = Player.sellItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Sold ${result.item.icon} ${result.item.name} for ${result.gold}g`, view: 'inventory' } : result; },
     sell_junk: () => { const result = Player.sellAllJunk(playerId, 'common'); return result.success ? { success: true, message: `Sold ${result.count} items for ${result.gold}g`, view: 'inventory' } : result; },
+    sell_outgrown: () => { const result = Player.sellBelowEquipped(playerId); return result.success ? { success: true, message: `Sold ${result.count} outgrown items for ${result.gold}g`, view: 'inventory' } : result; },
+    bulk_fight: () => {
+      const enemyId = lastEnemy.get(playerId) || Player.bestEnemy(playerId);
+      if (!enemyId) return { success: false, message: 'No enemy available' };
+      lastEnemy.set(playerId, enemyId);
+      const result = Player.bulkFight(playerId, enemyId, 5);
+      let message = `${result.wins}W/${result.losses}L | +${result.goldEarned}g +${result.xpEarned}xp`;
+      if (result.loot.length) message += ` | ${result.loot.length} drops`;
+      if (result.levelsGained) message += ` | 🎉 Lv.${result.endLevel}`;
+      if (result.stoppedReason) message += ` | Stopped: ${result.stoppedReason}`;
+      return { success: true, message, view: 'fight' };
+    },
+    daily: () => { const result = Player.claimDaily(playerId); return result.success ? { success: true, message: `🎁 Daily bonus: +${result.gold}g (streak: ${result.streak}/${result.maxStreak})`, view: null } : result; },
     buy_asset: () => { const result = Player.buyAsset(playerId, args.assetId); return result.success ? { success: true, message: `Bought ${result.asset.icon} ${result.asset.name}!`, view: 'assets' } : result; },
     collect_income: () => { const result = Player.collectAssetIncome(playerId); return result.success ? { success: true, message: `Earned ${result.net}g (+${result.income} income, -${result.maintenance} maintenance)`, view: 'assets' } : result; },
     pick_skill: () => { const result = Player.pickSkill(playerId, args.skillId); return result.success ? { success: true, message: `${result.skill.icon} ${result.skill.name} ${result.newLevel > 1 ? `→ Lv.${result.newLevel}` : 'learned'}!`, view: 'skills' } : result; },
@@ -153,7 +166,7 @@ function buildUI(view, playerId) {
       new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE')
         .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(view === 'profile'),
       new ButtonBuilder().setCustomId('quick_fight').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('daily').setLabel('🎁 Daily').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary)),
   ];
 
@@ -162,7 +175,10 @@ function buildUI(view, playerId) {
   if (view === 'fight') {
     // Fight-again + enemy select
     const fightRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('fight_again').setLabel('⚔️ Fight Again').setStyle(ButtonStyle.Danger));
+      new ButtonBuilder().setCustomId('fight_again').setLabel('⚔️ Again').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('bulk_fight').setLabel('⚔️ x5').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('pvp').setLabel('🥊 PVP').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success));
     rows.push(fightRow);
     if (player) rows.push(buildSelectMenu('fight_select', 'Choose enemy...',
       Object.entries(ENEMIES).filter(([, enemy]) => player.level >= enemy.minLevel).map(([id, enemy]) => ({
@@ -197,7 +213,8 @@ function buildUI(view, playerId) {
           return config ? { label: `${config.icon} ${config.name} (${config.slot})`, description: Object.entries(config.stats).map(([stat, val]) => `+${val} ${stat}`).join(', '), value: `${row.id}` } : null;
         }).filter(Boolean)));
       rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sell_junk').setLabel('💰 Sell Common Junk').setStyle(ButtonStyle.Secondary)));
+        new ButtonBuilder().setCustomId('sell_junk').setLabel('💰 Sell Junk').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('sell_outgrown').setLabel('💰 Sell Outgrown').setStyle(ButtonStyle.Secondary)));
     }
   }
 

@@ -155,7 +155,7 @@ export const ASSET_TIERS = Object.freeze({
   flex:   { name: 'Flex',   color: '#f5c542' },
 });
 
-export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1, max: 30 });
+export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 
 export const ECO = Object.freeze({
   startGold: 100, maxStamina: 10, staminaRegen: 300,

@@ -25,6 +25,20 @@ export function getOrCreatePlayer(id, username) {
   return getPlayer(id);
 }
 
+// Daily bonus: escalating gold for consecutive days, resets on miss
+const DAILY_REWARDS = [50, 100, 150, 250, 400, 600, 1000];
+
+export function claimDaily(playerId) {
+  const player = getPlayer(playerId);
+  const today = Date.now() / 86400000 | 0; // days since epoch
+  const lastDay = player.last_daily;
+  if (lastDay === today) return { success: false, error: 'Already claimed today' };
+  const streak = (lastDay === today - 1) ? Math.min(player.daily_streak + 1, DAILY_REWARDS.length - 1) : 0;
+  const reward = DAILY_REWARDS[streak];
+  upd(playerId, { gold: floorZero(player.gold + reward), daily_streak: streak, last_daily: today });
+  return { success: true, gold: reward, streak: streak + 1, maxStreak: DAILY_REWARDS.length };
+}
+
 // ── Stamina ──
 
 export function regenStamina(playerId) {
@@ -45,7 +59,7 @@ export function addXp(playerId, amount) {
   let xp = player.xp + (amount * (1 + quickLearnLevel * SKILLS.quick_learner.effect.xpBonus) | 0);
   let { level, xp_needed, max_hp, attack, defense, speed, strength } = player;
   let levelsGained = 0;
-  while (xp >= xp_needed && level < LEVEL.max) {
+  while (xp >= xp_needed) {
     xp -= xp_needed; level++; levelsGained++;
     xp_needed = LEVEL.xpBase * LEVEL.xpMult ** (level - 1) | 0;
     max_hp += LEVEL.hp; attack += LEVEL.atk; defense += LEVEL.def; speed += LEVEL.spd; strength += LEVEL.str;
@@ -478,4 +492,61 @@ export function bestEnemy(playerId) {
     if (player.level >= config.minLevel) best = id;
   }
   return best;
+}
+
+// Bulk fight — fight N times, return aggregated results
+export function bulkFight(playerId, enemyId, count) {
+  const results = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], levelsGained: 0, startLevel: getPlayer(playerId).level };
+  for (let i = 0; i < count; i++) {
+    const result = fightEnemy(playerId, enemyId);
+    if (!result.success) { results.stoppedReason = result.error; break; }
+    if (result.won) results.wins++; else results.losses++;
+    results.goldEarned += result.gold;
+    results.xpEarned += result.xp;
+    if (result.lootItem) results.loot.push(result.lootItem);
+    if (result.leveled) results.levelsGained += result.newLevel - (results.startLevel + results.levelsGained);
+  }
+  results.endLevel = getPlayer(playerId).level;
+  return results;
+}
+
+// Sell all unequipped items worse than currently equipped — smart cleanup
+export function sellBelowEquipped(playerId) {
+  const RARITY_TIER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  const equipped = getEquippedItems(playerId);
+  const equippedBySlot = {};
+  for (const row of equipped) {
+    const config = EQUIPMENT[row.item_id];
+    if (config) equippedBySlot[config.slot] = RARITY_TIER[config.rarity] ?? 0;
+  }
+  const toSell = getAllEquipment(playerId).filter(row => {
+    if (row.equipped) return false;
+    const config = EQUIPMENT[row.item_id];
+    if (!config) return false;
+    const equippedTier = equippedBySlot[config.slot];
+    return equippedTier !== undefined && (RARITY_TIER[config.rarity] ?? 0) < equippedTier;
+  });
+  if (!toSell.length) return { success: false, error: 'Nothing to sell' };
+  return tx(() => {
+    let totalGold = 0;
+    for (const row of toSell) {
+      totalGold += (EQUIPMENT[row.item_id].sellValue * ECO.sellMult) | 0;
+      sql('DELETE FROM equipment WHERE id=?').run(row.id);
+    }
+    const player = getPlayer(playerId);
+    upd(playerId, { gold: floorZero(player.gold + totalGold) });
+    return { success: true, gold: totalGold, count: toSell.length };
+  });
+}
+
+// Highest tier asset owned — for status display
+export function highestAssetIcon(playerId) {
+  const owned = getPlayerAssets(playerId);
+  if (!owned.length) return null;
+  let best = null, bestCost = 0;
+  for (const row of owned) {
+    const config = ASSETS[row.asset_id];
+    if (config && config.cost > bestCost) { best = config; bestCost = config.cost; }
+  }
+  return best?.icon || null;
 }

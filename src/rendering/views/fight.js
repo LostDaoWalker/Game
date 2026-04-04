@@ -61,7 +61,10 @@ export function drawResult(ctx, bx, by, bw, player, r) {
 
   R.panel(ctx, bx, by + 188, bw, 148, { t: 'COMBAT LOG' });
   let ly = by + 214;
+  const logColors = { '🧪': '#4ade80', '💨': '#38bdf8', '💥': '#f5c542', '🛡': '#a78bfa', '⚔': '#fb923c', '🔄': '#38bdf8' };
   for (const e of r.combat.log.slice(-9)) {
-    R.txt(ctx, `[${e.side === 'attacker' ? 'YOU' : 'FOE'}] ${e.text}`, bx + 12, ly, { s: 10, c: e.side === 'attacker' ? C.primary : C.danger }); ly += 14;
+    const emoji = e.text.match(/^([\p{Emoji}])/u)?.[1];
+    const color = emoji && logColors[emoji] ? logColors[emoji] : (e.side === 'attacker' ? C.primary : C.danger);
+    R.txt(ctx, `[${e.side === 'attacker' ? 'YOU' : 'FOE'}] ${e.text}`, bx + 12, ly, { s: 10, c: color }); ly += 14;
   }
 }

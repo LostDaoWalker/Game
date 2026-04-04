@@ -64,9 +64,10 @@ export function renderAssets(player, ownedAssets) {
     R.txt(ctx, config.tier.toUpperCase(), x + 8, y + 42, { s: 9, c: tierColor });
     R.txt(ctx, `+${R.fmt(config.networthValue)} net`, x + 80, y + 42, { s: 9, c: C.accent });
 
-    // ROI bar — ratio of net income to cost (visual anti-snowball indicator)
-    const roiRatio = Math.min(1, Math.max(0, roi / (config.cost / 100)));
-    R.bar(ctx, x + 8, y + 57, cardWidth - 16, 4, owned ? 1 : roiRatio, owned ? C.success : tierColor);
+    // Progress bar — gold toward purchase, or full if owned
+    const progress = owned ? 1 : Math.min(1, player.gold / config.cost);
+    R.bar(ctx, x + 8, y + 57, cardWidth - 16, 4, progress, owned ? C.success : tierColor);
+    if (!owned && !locked) R.txt(ctx, `${R.fmt(Math.min(player.gold, config.cost))}/${R.fmt(config.cost)}`, x + cardWidth - 8, y + 42, { s: 8, c: C.textMuted, a: 'right' });
 
     index++;
   }
