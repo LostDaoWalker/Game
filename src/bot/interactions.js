@@ -9,11 +9,9 @@ import { renderSkills } from '../rendering/views/skills.js';
 import { renderProfile } from '../rendering/views/profile.js';
 
 const activeView = new Map();
-
-// ── Derived view data — computed once per render ──
+const lastEnemy = new Map();
 
 const equippedConfigs = playerId => Player.getEquippedItems(playerId).map(row => EQUIPMENT[row.item_id]).filter(Boolean);
-
 const skillConfigs = playerId => Player.getPlayerSkills(playerId)
   .map(row => { const config = SKILLS[row.skill_id]; return config ? { ...config, level: row.level, id: row.skill_id } : null; })
   .filter(Boolean);
@@ -42,19 +40,37 @@ function executeAction(playerId, action, args = {}) {
     if (!result.success) return result;
     const foeName = result.foe.name;
     let message = result.won ? `⚔️ Beat ${foeName}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${foeName}. +${result.xp}xp`;
-    if (result.lootItem) message += ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}!`;
+    if (result.lootItem) message += ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}`;
+    if (result.autoEquipped) message += ` (auto-equipped!)`;
+    else if (result.lootItem) message += `!`;
     if (result.leveled) message += ` 🎉 Level ${result.newLevel}!`;
     return { success: true, message, view, extra: result };
   };
 
   const actions = {
-    fight_enemy: () => formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'),
+    fight_enemy: () => {
+      lastEnemy.set(playerId, args.enemyId);
+      return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight');
+    },
+    fight_again: () => {
+      const enemyId = lastEnemy.get(playerId) || Player.bestEnemy(playerId);
+      if (!enemyId) return { success: false, message: 'No enemy available' };
+      lastEnemy.set(playerId, enemyId);
+      return formatCombatResult(Player.fightEnemy(playerId, enemyId), 'fight');
+    },
+    quick_fight: () => {
+      const enemyId = Player.bestEnemy(playerId);
+      if (!enemyId) return { success: false, message: 'No enemy available' };
+      lastEnemy.set(playerId, enemyId);
+      return formatCombatResult(Player.fightEnemy(playerId, enemyId), 'fight');
+    },
     pvp: () => formatCombatResult(Player.pvpFight(playerId), 'fight'),
     raid: () => formatCombatResult(Player.fightRaid(playerId, args.raidId), 'raids'),
     equip: () => { const result = Player.equipItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Equipped ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
     sell: () => { const result = Player.sellItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Sold ${result.item.icon} ${result.item.name} for ${result.gold}g`, view: 'inventory' } : result; },
+    sell_junk: () => { const result = Player.sellAllJunk(playerId, 'common'); return result.success ? { success: true, message: `Sold ${result.count} items for ${result.gold}g`, view: 'inventory' } : result; },
     pick_skill: () => { const result = Player.pickSkill(playerId, args.skillId); return result.success ? { success: true, message: `${result.skill.icon} ${result.skill.name} ${result.newLevel > 1 ? `→ Lv.${result.newLevel}` : 'learned'}!`, view: 'skills' } : result; },
-    heal: () => { const result = Player.healPlayer(playerId); return result.success ? { success: true, message: `Healed ${result.healed} HP (-${result.cost}g)`, view: 'fight' } : result; },
+    heal: () => { const result = Player.healPlayer(playerId); return result.success ? { success: true, message: `Healed ${result.healed} HP (-${result.cost}g)`, view: null } : result; },
   };
 
   const handler = actions[action];
@@ -129,25 +145,43 @@ function buildUI(view, playerId) {
       new ButtonBuilder().setCustomId('nav:profile').setLabel('PROFILE')
         .setStyle(view === 'profile' ? ButtonStyle.Success : ButtonStyle.Secondary)
         .setDisabled(view === 'profile'),
-      new ButtonBuilder().setCustomId('pvp').setLabel('⚔️ PVP').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('quick_fight').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('pvp').setLabel('🥊 PVP').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('refresh').setLabel('🔄').setStyle(ButtonStyle.Secondary)),
   ];
 
   const player = Player.getPlayer(playerId);
-  if (view === 'fight' && player) rows.push(buildSelectMenu('fight_select', 'Choose enemy...',
-    Object.entries(ENEMIES).filter(([, enemy]) => player.level >= enemy.minLevel).map(([id, enemy]) => ({
-      label: `${enemy.icon} ${enemy.name}`, description: `Lv.${enemy.minLevel}+ | ⚡${ZONES[enemy.zone]?.staminaCost || 1}`, value: id,
-    }))));
+
+  if (view === 'fight') {
+    // Fight-again + enemy select
+    const fightRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('fight_again').setLabel('⚔️ Fight Again').setStyle(ButtonStyle.Danger));
+    rows.push(fightRow);
+    if (player) rows.push(buildSelectMenu('fight_select', 'Choose enemy...',
+      Object.entries(ENEMIES).filter(([, enemy]) => player.level >= enemy.minLevel).map(([id, enemy]) => ({
+        label: `${enemy.icon} ${enemy.name}`, description: `Lv.${enemy.minLevel}+ | ⚡${ZONES[enemy.zone]?.staminaCost || 1}`, value: id,
+      }))));
+  }
+
   if (view === 'raids' && player) rows.push(buildSelectMenu('raid_select', 'Choose boss...',
     Object.entries(RAIDS).filter(([, raid]) => player.level >= raid.minLevel).map(([id, raid]) => ({
       label: `${raid.icon} ${raid.name}`, description: `⚡${raid.staminaCost} | ❤${raid.hp}`, value: id,
     }))));
-  if (view === 'inventory' && player) rows.push(buildSelectMenu('equip', 'Equip item...',
-    Player.getAllEquipment(playerId).filter(row => !row.equipped).slice(0, 24).map(row => {
-      const config = EQUIPMENT[row.item_id];
-      return config ? { label: `${config.icon} ${config.name} (${config.slot})`, description: Object.entries(config.stats).map(([stat, val]) => `+${val} ${stat}`).join(', '), value: `${row.id}` } : null;
-    }).filter(Boolean)));
+
+  if (view === 'inventory' && player) {
+    const unequipped = Player.getAllEquipment(playerId).filter(row => !row.equipped);
+    if (unequipped.length) {
+      rows.push(buildSelectMenu('equip', 'Equip item...',
+        unequipped.slice(0, 24).map(row => {
+          const config = EQUIPMENT[row.item_id];
+          return config ? { label: `${config.icon} ${config.name} (${config.slot})`, description: Object.entries(config.stats).map(([stat, val]) => `+${val} ${stat}`).join(', '), value: `${row.id}` } : null;
+        }).filter(Boolean)));
+      rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('sell_junk').setLabel('💰 Sell Common Junk').setStyle(ButtonStyle.Secondary)));
+    }
+  }
+
   if (view === 'skills' && player?.pending_skill_picks > 0) {
     const offers = Player.getSkillOffers(playerId);
     if (offers) rows.push(buildSelectMenu('pick_skill', '🎯 Pick skill...',
@@ -155,5 +189,6 @@ function buildUI(view, playerId) {
         .map(id => SKILLS[id] ? { label: `${SKILLS[id].icon} ${SKILLS[id].name}`, description: SKILLS[id].description.slice(0, 50), value: id } : null)
         .filter(Boolean)));
   }
+
   return rows;
 }

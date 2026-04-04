@@ -292,11 +292,14 @@ function executeCombat(playerId, foe, combatType, lootFn) {
     if (winLossField) updates[winLossField] = player[winLossField] + 1;
     if (combatType === 'raid' && won) { updates.raids_completed = player.raids_completed + 1; updates.bosses_killed = player.bosses_killed + 1; }
     upd(playerId, updates);
-    if (lootDrop) sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, lootDrop);
+    if (lootDrop) {
+      sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, lootDrop);
+    }
     const xpResult = addXp(playerId, earnedXp);
     sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?,?)')
       .run(playerId, combatType, foe.name, won ? 1 : 0, result.damageDealt, result.damageTaken, earnedGold, earnedXp, lootDrop);
-    return { success: true, won, combat: result, gold: earnedGold, xp: xpResult.xp, lootItem: lootDrop ? EQUIPMENT[lootDrop] : null, leveled: xpResult.leveled, newLevel: xpResult.newLevel, foe };
+    const autoEquipped = lootDrop ? autoEquipIfBetter(playerId, lootDrop) : null;
+    return { success: true, won, combat: result, gold: earnedGold, xp: xpResult.xp, lootItem: lootDrop ? EQUIPMENT[lootDrop] : null, autoEquipped, leveled: xpResult.leveled, newLevel: xpResult.newLevel, foe };
   });
 }
 
@@ -382,4 +385,52 @@ export const getLeaderboard = (limit = 10) => sql('SELECT id,username,networth,l
 export function getRank(playerId) {
   const row = sql('SELECT COUNT(*) + 1 AS rank FROM players WHERE networth > (SELECT networth FROM players WHERE id=?)').get(playerId);
   return row?.rank || 99;
+}
+
+// Auto-equip if loot is stronger than current slot occupant
+export function autoEquipIfBetter(playerId, itemId) {
+  const config = EQUIPMENT[itemId];
+  if (!config) return null;
+  const equipped = getEquippedItems(playerId);
+  const currentInSlot = equipped.find(row => EQUIPMENT[row.item_id]?.slot === config.slot);
+  const currentConfig = currentInSlot ? EQUIPMENT[currentInSlot.item_id] : null;
+  const totalStats = stats => Object.values(stats).reduce((sum, val) => sum + val, 0);
+  if (!currentConfig || totalStats(config.stats) > totalStats(currentConfig.stats)) {
+    const newRow = sql('SELECT id FROM equipment WHERE player_id=? AND item_id=? AND equipped=0 ORDER BY id DESC LIMIT 1').get(playerId, itemId);
+    if (newRow) { equipItem(playerId, newRow.id); return config; }
+  }
+  return null;
+}
+
+// Sell all unequipped items of a given rarity (or below)
+export function sellAllJunk(playerId, maxRarity = 'common') {
+  const rarityTier = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  const maxTier = rarityTier[maxRarity] ?? 0;
+  const items = getAllEquipment(playerId).filter(row => {
+    if (row.equipped) return false;
+    const config = EQUIPMENT[row.item_id];
+    return config && (rarityTier[config.rarity] ?? 0) <= maxTier;
+  });
+  if (!items.length) return { success: false, error: 'Nothing to sell' };
+  return tx(() => {
+    let totalGold = 0;
+    for (const row of items) {
+      const config = EQUIPMENT[row.item_id];
+      totalGold += (config.sellValue * ECO.sellMult) | 0;
+      sql('DELETE FROM equipment WHERE id=?').run(row.id);
+    }
+    const player = getPlayer(playerId);
+    upd(playerId, { gold: floorZero(player.gold + totalGold) });
+    return { success: true, gold: totalGold, count: items.length };
+  });
+}
+
+// Best available enemy for quick-fight
+export function bestEnemy(playerId) {
+  const player = getPlayer(playerId);
+  let best = null;
+  for (const [id, config] of Object.entries(ENEMIES)) {
+    if (player.level >= config.minLevel) best = id;
+  }
+  return best;
 }
