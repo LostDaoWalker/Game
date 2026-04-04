@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, SYNTHESIS, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
@@ -40,7 +40,7 @@ function formatCombatResult(result, view) {
   let message = result.won ? `⚔️ Beat ${result.foe.name}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${result.foe.name}. +${result.xp}xp`;
   if (result.lootItem) message += result.autoEquipped ? ` 🎁 ${result.lootItem.icon} ${result.lootItem.name} (auto-equipped!)` : ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}!`;
   if (result.leveled) message += ` 🎉 Level ${result.newLevel}!`;
-  if (result.stolen) message += ` 💰 Stole ${result.stolen}g!`;
+  if (result.pvpBonus) message += ` 💰 +${result.pvpBonus}g bonus!`;
   return { success: true, message, view, extra: result };
 }
 
@@ -48,8 +48,8 @@ function executeAction(playerId, action, args = {}) {
   Player.regenStamina(playerId);
   const actions = {
     // ── Primary loop ──
-    hustle: () => {
-      const { log, player } = Player.hustle(playerId);
+    grind: () => {
+      const { log, player } = Player.grind(playerId);
       if (player.pending_skill_picks > 0) log.push(`🎯 ${player.pending_skill_picks} skill pick${player.pending_skill_picks > 1 ? 's' : ''} waiting!`);
       return { success: true, message: log.join(' | ') || 'Out of stamina — wait or heal', view: 'home' };
     },
@@ -70,7 +70,6 @@ function executeAction(playerId, action, args = {}) {
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
     sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     sell_outgrown: () => { const r = Player.sellBelowEquipped(playerId); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
-    synthesize: () => { const r = Player.synthesize(playerId, args.item1, args.item2, args.item3); return r.success ? { success: true, message: `${r.upgraded ? '✨' : '🔨'} ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}`, view: 'skills' } : r; },
   };
   const handler = actions[action];
@@ -123,15 +122,14 @@ export async function handleSelectMenu(interaction) {
     fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }],
     equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }],
     buy_asset: ['buy_asset', { assetId: val }], hire_crew: ['hire_crew', { crewId: val }],
-    synthesize_select: ['synthesize', { item1: +val.split(',')[0], item2: +val.split(',')[1], item3: +val.split(',')[2] }],
   };
   const [action, args] = map[menuId] || ['unknown', {}];
-  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', synthesize_select: 'inventory' }[menuId];
+  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home' }[menuId];
   return sendResult(interaction, playerId, executeAction(playerId, action, args), fallback);
 }
 
 // ── UI ──
-// Row 1: HUSTLE (the one button) + secondary actions
+// Row 1: GRIND (the one button) + secondary actions
 // Row 2: Nav tabs for detail views (only when you want to dig in)
 // Row 3+: Context-specific menus per view
 
@@ -140,7 +138,7 @@ function buildUI(view, playerId) {
   const rows = [
     // THE button
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('hustle').setLabel('💰 HUSTLE').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('grind').setLabel('💰 GRIND').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('daily').setLabel('🎁').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('deposit').setLabel('🏦').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('pvp').setLabel('🥊').setStyle(ButtonStyle.Danger),

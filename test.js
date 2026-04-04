@@ -34,14 +34,14 @@ const daily2 = P.claimDaily('test');
 assert('daily duplicate blocked', !daily2.success);
 
 // ── Combat ──
-const fight = P.fightEnemy('test', 'mugger');
+const fight = P.fightEnemy('test', 'troublemaker');
 assert('fight success', fight.success);
-assert('fight has foe', fight.foe && fight.foe.name === 'Mugger');
+assert('fight has foe', fight.foe && fight.foe.name === 'Troublemaker');
 assert('fight gold >= 0', fight.gold >= 0);
 
 // ── Edge: fight with 0 stamina ──
-for (let i = 0; i < 20; i++) P.fightEnemy('test', 'mugger');
-const noStamina = P.fightEnemy('test', 'mugger');
+for (let i = 0; i < 20; i++) P.fightEnemy('test', 'troublemaker');
+const noStamina = P.fightEnemy('test', 'troublemaker');
 // May or may not have stamina — just check it returns cleanly
 assert('0 stamina returns error value', noStamina.success === true || noStamina.error === 'Not enough stamina');
 
@@ -51,7 +51,7 @@ assert('unknown enemy rejected', !unknown.success);
 
 // ── Bulk fight ──
 P.regenStamina('test'); // let some regen
-const bulk = P.bulkFight('test', 'mugger', 3);
+const bulk = P.bulkFight('test', 'troublemaker', 3);
 assert('bulk fight ran', bulk.wins + bulk.losses > 0 || bulk.stoppedReason);
 
 // ── PvP ──
@@ -134,7 +134,7 @@ for (const [name, render] of Object.entries(views)) {
 }
 
 // ── Fight result render ──
-const fr = P.fightEnemy('test', 'mugger');
+const fr = P.fightEnemy('test', 'troublemaker');
 if (fr.success) {
   try { renderFight(P.getPlayer('test'), fr); assert('render fight result', true); }
   catch (e) { assert(`render fight result (threw: ${e.message})`, false); }

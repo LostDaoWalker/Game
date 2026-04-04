@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, SYNTHESIS, BANK } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, BANK } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -366,14 +366,14 @@ export function pvpFight(playerId) {
     xpRange: [10 + player.level * 3, 30 + player.level * 5],
     goldRange: [10 + player.level * 5, 20 + player.level * 10],
   }, 'pvp', null);
-  // Steal unbanked gold from real opponents on win
+  // PvP bonus: winner earns a percentage of opponent's unbanked gold
   if (result.success && result.won && opponent) {
-    const stolen = (opponent.gold * BANK.pvpTheftPercent) | 0;
-    if (stolen > 0) {
-      upd(opponent.id, { gold: floorZero(opponent.gold - stolen) });
+    const bonus = (opponent.gold * BANK.pvpBonusPercent) | 0;
+    if (bonus > 0) {
+      upd(opponent.id, { gold: floorZero(opponent.gold - bonus) });
       const fresh = getPlayer(playerId);
-      upd(playerId, { gold: floorZero(fresh.gold + stolen) });
-      result.stolen = stolen;
+      upd(playerId, { gold: floorZero(fresh.gold + bonus) });
+      result.pvpBonus = bonus;
     }
   }
   return result;
@@ -574,7 +574,7 @@ export function highestAssetIcon(playerId) {
   return best?.icon || null;
 }
 
-// ── Bank — protects gold from PvP theft ──
+// ── Bank — protects gold from PvP ──
 
 export function depositGold(playerId, amount) {
   const player = getPlayer(playerId);
@@ -630,40 +630,9 @@ export function getActiveGearSet(playerId) {
   return null;
 }
 
-// ── Synthesis — combine 3 items for a chance at higher rarity ──
+// ── GRIND — core loop: fight, heal, sell junk ──
 
-export function synthesize(playerId, itemRowId1, itemRowId2, itemRowId3) {
-  const player = getPlayer(playerId);
-  if (player.gold < SYNTHESIS.cost) return { success: false, error: `Need ${SYNTHESIS.cost}g` };
-  const rows = [itemRowId1, itemRowId2, itemRowId3].map(id => sql('SELECT * FROM equipment WHERE id=? AND player_id=? AND equipped=0').get(id, playerId));
-  if (rows.some(r => !r)) return { success: false, error: 'Item not found or equipped' };
-  const configs = rows.map(r => EQUIPMENT[r.item_id]);
-  if (configs.some(c => !c)) return { success: false, error: 'Unknown item' };
-  // Use the highest rarity among inputs as the base
-  const RARITY_TIER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
-  const bestRarity = configs.reduce((best, c) => RARITY_TIER[c.rarity] > RARITY_TIER[best] ? c.rarity : best, 'common');
-  const upgradeChance = SYNTHESIS.upgradeChance[bestRarity];
-  const nextRarity = SYNTHESIS.nextRarity[bestRarity];
-  return tx(() => {
-    // Consume all 3 items + gold
-    for (const row of rows) sql('DELETE FROM equipment WHERE id=?').run(row.id);
-    upd(playerId, { gold: floorZero(player.gold - SYNTHESIS.cost) });
-    // Roll for upgrade
-    const upgraded = nextRarity && Math.random() < upgradeChance;
-    const resultRarity = upgraded ? nextRarity : bestRarity;
-    // Pick random item of result rarity at or below player level
-    const candidates = Object.entries(EQUIPMENT).filter(([, item]) => item.rarity === resultRarity && item.dropLevel <= player.level + 2);
-    if (!candidates.length) return { success: false, error: 'No items available at this rarity' };
-    const [resultItemId, resultConfig] = candidates[randBetween(0, candidates.length - 1)];
-    sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, resultItemId);
-    autoEquipIfBetter(playerId, resultItemId);
-    return { success: true, upgraded, item: resultConfig, consumed: configs.map(c => c.name) };
-  });
-}
-
-// ── HUSTLE — core grind loop, spending decisions are still yours ──
-
-export function hustle(playerId) {
+export function grind(playerId) {
   regenStamina(playerId);
   collectAssetIncome(playerId);
   const log = [];
