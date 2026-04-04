@@ -15,6 +15,7 @@ export function getDb() {
       id TEXT PRIMARY KEY, username TEXT NOT NULL,
       created_at INTEGER DEFAULT (unixepoch()), last_active INTEGER DEFAULT (unixepoch()),
       gold INTEGER NOT NULL DEFAULT 100 CHECK(gold >= 0),
+      banked_gold INTEGER NOT NULL DEFAULT 0 CHECK(banked_gold >= 0),
       level INTEGER NOT NULL DEFAULT 1 CHECK(level >= 1),
       daily_streak INTEGER NOT NULL DEFAULT 0,
       last_daily INTEGER NOT NULL DEFAULT 0,
@@ -75,6 +76,14 @@ export function getDb() {
       last_collected INTEGER NOT NULL DEFAULT (unixepoch()),
       UNIQUE(player_id, asset_id)
     );
+    CREATE TABLE IF NOT EXISTS crew (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      crew_id TEXT NOT NULL,
+      hired_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      UNIQUE(player_id, crew_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_crew_pid ON crew(player_id);
     CREATE INDEX IF NOT EXISTS idx_assets_pid ON assets(player_id);
     CREATE INDEX IF NOT EXISTS idx_eq_pid ON equipment(player_id);
     CREATE INDEX IF NOT EXISTS idx_sk_pid ON skills(player_id);

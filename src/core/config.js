@@ -155,6 +155,44 @@ export const ASSET_TIERS = Object.freeze({
   flex:   { name: 'Flex',   color: '#f5c542' },
 });
 
+// ── Crew (associates) — passive bonuses, hired with gold ──
+// [id, name, icon, cost, bonus_type, bonus_value, minLevel]
+const CR = [
+  ['lookout','Lookout','👀',300,'speed',3,2],
+  ['enforcer','Enforcer','💪',800,'attack',5,5],
+  ['accountant','Accountant','📊',1500,'goldBonus',10,8],
+  ['bodyguard','Bodyguard','🕶️',3000,'defense',8,10],
+  ['trainer','Trainer','🏋️',5000,'strength',6,12],
+  ['hacker','Hacker','💻',10000,'speed',12,15],
+  ['fixer','Fixer','🔧',20000,'attack',15,18],
+  ['lawyer','Lawyer','⚖️',50000,'defense',20,22],
+  ['underboss','Underboss','🤵',100000,'strength',15,25],
+];
+export const CREW = Object.fromEntries(CR.map(([id,name,icon,cost,bonusType,bonusValue,minLevel]) =>
+  [id, Object.freeze({ name, icon, cost, bonusType, bonusValue, minLevel })]));
+
+// ── Gear Sets — equipping matching items grants a bonus ──
+export const GEAR_SETS = Object.freeze({
+  street: { name: 'Street Set', items: ['pipe_wrench','hoodie','snapback','beat_up_nikes','lucky_penny'], bonus: { attack: 5 }, icon: '🏚️' },
+  working: { name: 'Working Set', items: ['tire_iron','kevlar_vest','hard_hat','work_boots','silver_chain'], bonus: { defense: 10, hp: 20 }, icon: '🏗️' },
+  executive: { name: 'Executive Set', items: ['carbon_blade','tailored_suit','tactical_helmet','designer_sneakers','gold_watch'], bonus: { attack: 15, speed: 10 }, icon: '💼' },
+  elite: { name: 'Elite Set', items: ['custom_45','armored_overcoat','gold_crown','carbon_runners','diamond_ring'], bonus: { attack: 25, defense: 20, hp: 50 }, icon: '🏆' },
+  black: { name: 'Black Card Set', items: ['black_card','black_label_suit','diamond_crown','carbon_runners','black_amex'], bonus: { attack: 40, defense: 30, speed: 20, strength: 20 }, icon: '💎' },
+});
+
+// ── Synthesis — combine 3 items for a chance at higher rarity ──
+export const SYNTHESIS = Object.freeze({
+  cost: 100, // gold cost per attempt
+  upgradeChance: { common: 0.6, uncommon: 0.45, rare: 0.3, epic: 0.15 }, // chance to get next rarity
+  nextRarity: { common: 'uncommon', uncommon: 'rare', rare: 'epic', epic: 'legendary' },
+});
+
+// ── Bank — protects gold from PvP theft ──
+export const BANK = Object.freeze({
+  depositFee: 0.05, // 5% fee to deposit
+  pvpTheftPercent: 0.10, // steal 10% of unbanked gold on PvP win
+});
+
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 
 export const ECO = Object.freeze({

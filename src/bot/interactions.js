@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, SYNTHESIS, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
@@ -67,7 +67,13 @@ function executeAction(playerId, action, args = {}) {
       lastEnemy.set(playerId, enemyId);
       return formatCombatResult(Player.fightEnemy(playerId, enemyId), 'fight');
     },
-    pvp: () => formatCombatResult(Player.pvpFight(playerId), 'fight'),
+    pvp: () => {
+      const result = Player.pvpFight(playerId);
+      if (!result.success) return result;
+      const fmted = formatCombatResult(result, 'fight');
+      if (result.stolen) fmted.message += ` 💰 Stole ${result.stolen}g!`;
+      return fmted;
+    },
     raid: () => formatCombatResult(Player.fightRaid(playerId, args.raidId), 'raids'),
     equip: () => { const result = Player.equipItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Equipped ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
     sell: () => { const result = Player.sellItem(playerId, args.itemRowId); return result.success ? { success: true, message: `Sold ${result.item.icon} ${result.item.name} for ${result.gold}g`, view: 'inventory' } : result; },
@@ -89,6 +95,10 @@ function executeAction(playerId, action, args = {}) {
     collect_income: () => { const result = Player.collectAssetIncome(playerId); return result.success ? { success: true, message: `Earned ${result.net}g (+${result.income} income, -${result.maintenance} maintenance)`, view: 'assets' } : result; },
     pick_skill: () => { const result = Player.pickSkill(playerId, args.skillId); return result.success ? { success: true, message: `${result.skill.icon} ${result.skill.name} ${result.newLevel > 1 ? `→ Lv.${result.newLevel}` : 'learned'}!`, view: 'skills' } : result; },
     heal: () => { const result = Player.healPlayer(playerId); return result.success ? { success: true, message: `Healed ${result.healed} HP (-${result.cost}g)`, view: null } : result; },
+    deposit: () => { const p = Player.getPlayer(playerId); const amount = (p.gold * 0.5) | 0 || p.gold; const result = Player.depositGold(playerId, amount); return result.success ? { success: true, message: `🏦 Deposited ${result.deposited}g (fee: ${result.fee}g)`, view: null } : result; },
+    withdraw: () => { const p = Player.getPlayer(playerId); const result = Player.withdrawGold(playerId, p.banked_gold); return result.success ? { success: true, message: `🏦 Withdrew ${result.withdrawn}g`, view: null } : result; },
+    hire_crew: () => { const result = Player.hireCrew(playerId, args.crewId); return result.success ? { success: true, message: `Hired ${result.crew.icon} ${result.crew.name}!`, view: 'home' } : result; },
+    synthesize: () => { const result = Player.synthesize(playerId, args.item1, args.item2, args.item3); return result.success ? { success: true, message: result.upgraded ? `✨ Upgraded! Got ${result.item.icon} ${result.item.name}!` : `🔨 Got ${result.item.icon} ${result.item.name}`, view: 'inventory' } : result; },
   };
 
   const handler = actions[action];
@@ -141,6 +151,8 @@ export async function handleSelectMenu(interaction) {
 
   const menuActions = {
     buy_asset: ['buy_asset', { assetId: selectedValue }],
+    hire_crew: ['hire_crew', { crewId: selectedValue }],
+    synthesize_select: ['synthesize', { item1: +selectedValue.split(',')[0], item2: +selectedValue.split(',')[1], item3: +selectedValue.split(',')[2] }],
     fight_select: ['fight_enemy', { enemyId: selectedValue }],
     raid_select: ['raid', { raidId: selectedValue }],
     equip: ['equip', { itemRowId: +selectedValue }],
@@ -148,7 +160,7 @@ export async function handleSelectMenu(interaction) {
     pick_skill: ['pick_skill', { skillId: selectedValue }],
   };
   const [action, args] = menuActions[menuId] || ['unknown', {}];
-  const fallbackView = { equip: 'inventory', sell: 'inventory', pick_skill: 'skills', buy_asset: 'assets' }[menuId];
+  const fallbackView = { equip: 'inventory', sell: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', synthesize_select: 'inventory' }[menuId];
   return sendActionResult(interaction, playerId, executeAction(playerId, action, args), fallbackView);
 }
 
@@ -215,7 +227,31 @@ function buildUI(view, playerId) {
       rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('sell_junk').setLabel('💰 Sell Junk').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('sell_outgrown').setLabel('💰 Sell Outgrown').setStyle(ButtonStyle.Secondary)));
+      // Synthesis — offer if 3+ unequipped items exist
+      if (unequipped.length >= 3 && player.gold >= SYNTHESIS.cost) {
+        const top3 = unequipped.slice(0, 3);
+        const names = top3.map(r => EQUIPMENT[r.item_id]?.name || '?').join(' + ');
+        rows.push(buildSelectMenu('synthesize_select', `🔨 Synthesize (${SYNTHESIS.cost}g)...`,
+          [{ label: `Combine: ${names}`, description: `Fuse 3 weakest items for a chance at rarity upgrade`, value: top3.map(r => r.id).join(',') }]));
+      }
     }
+  }
+
+  if (view === 'home' && player) {
+    // Bank + Crew on home screen
+    const bankRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('deposit').setLabel(`🏦 Bank 50% (${player.banked_gold}g safe)`).setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('withdraw').setLabel('🏦 Withdraw All').setStyle(ButtonStyle.Secondary).setDisabled(!player.banked_gold),
+      new ButtonBuilder().setCustomId('heal').setLabel('❤️ Heal').setStyle(ButtonStyle.Success));
+    rows.push(bankRow);
+    const hiredSet = new Set(Player.getPlayerCrew(playerId).map(row => row.crew_id));
+    const hireable = Object.entries(CREW).filter(([id, crew]) => !hiredSet.has(id) && player.level >= crew.minLevel);
+    if (hireable.length) rows.push(buildSelectMenu('hire_crew', '🤵 Hire crew...',
+      hireable.map(([id, crew]) => ({
+        label: `${crew.icon} ${crew.name} (${crew.cost}g)`,
+        description: `+${crew.bonusValue} ${crew.bonusType}`,
+        value: id,
+      }))));
   }
 
   if (view === 'skills' && player?.pending_skill_picks > 0) {

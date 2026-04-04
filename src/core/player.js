@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, SYNTHESIS, BANK } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -65,7 +65,11 @@ export function addXp(playerId, amount) {
     max_hp += LEVEL.hp; attack += LEVEL.atk; defense += LEVEL.def; speed += LEVEL.spd; strength += LEVEL.str;
   }
   const updates = { xp, level, xp_needed, max_hp, hp: max_hp, attack, defense, speed, strength };
-  if (levelsGained) { updates.pending_skill_picks = player.pending_skill_picks + levelsGained; generateSkillOffers(playerId); }
+  if (levelsGained) {
+    updates.pending_skill_picks = player.pending_skill_picks + levelsGained;
+    updates.stamina = player.max_stamina; // full refill on level-up
+    generateSkillOffers(playerId);
+  }
   upd(playerId, updates);
   return { xp: amount, leveled: levelsGained > 0, newLevel: level };
 }
@@ -167,10 +171,15 @@ export function pickSkill(playerId, skillId) {
 
 function getEffectiveStats(playerId) {
   const player = getPlayer(playerId), bonuses = getEquipmentBonuses(playerId);
+  const crewBonus = getCrewBonuses(playerId);
+  const gearSet = getActiveGearSet(playerId);
+  const setBonus = gearSet?.bonus || {};
   return {
-    hp: player.hp, max_hp: player.max_hp + bonuses.hp,
-    attack: player.attack + bonuses.attack, defense: player.defense + bonuses.defense,
-    speed: player.speed + bonuses.speed, strength: player.strength + bonuses.strength,
+    hp: player.hp, max_hp: player.max_hp + bonuses.hp + (setBonus.hp || 0),
+    attack: player.attack + bonuses.attack + (crewBonus.attack || 0) + (setBonus.attack || 0),
+    defense: player.defense + bonuses.defense + (crewBonus.defense || 0) + (setBonus.defense || 0),
+    speed: player.speed + bonuses.speed + (crewBonus.speed || 0) + (setBonus.speed || 0),
+    strength: player.strength + bonuses.strength + (crewBonus.strength || 0) + (setBonus.strength || 0),
   };
 }
 
@@ -293,8 +302,9 @@ function executeCombat(playerId, foe, combatType, lootFn) {
   const skillLevels = getSkillLevelMap(playerId);
   const result = simulate(stats, foe.stats, skillLevels, foe.skills || {});
   const won = result.winner === 'attacker';
-  const goldBonus = readLevel(skillLevels, 'gold_digger');
-  const goldMultiplier = goldBonus ? 1 + goldBonus * .2 : 1;
+  const goldSkillBonus = readLevel(skillLevels, 'gold_digger');
+  const crewGoldBonus = getCrewBonuses(playerId).goldBonus || 0;
+  const goldMultiplier = 1 + (goldSkillBonus ? goldSkillBonus * .2 : 0) + crewGoldBonus / 100;
   const earnedXp = won ? randBetween(...foe.xpRange) : randBetween(...foe.xpRange) * .25 | 0;
   const earnedGold = won ? (randBetween(...foe.goldRange) * goldMultiplier | 0) : 0;
   const lootDrop = won && lootFn ? lootFn(player.level, skillLevels) : null;
@@ -349,13 +359,24 @@ export function pvpFight(playerId) {
   const opponent = sql('SELECT * FROM players WHERE id!=? AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(playerId, Math.max(1, player.level - 3), player.level + 3);
   const opponentLevel = opponent?.level || Math.max(1, player.level + randBetween(-2, 2));
   const opponentName = opponent ? opponent.username : ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute'][randBetween(0, 3)] + ` (Lv.${opponentLevel})`;
-  return executeCombat(playerId, {
+  const result = executeCombat(playerId, {
     name: opponentName, cost: ECO.pvpCost,
     stats: opponent ? getEffectiveStats(opponent.id) : { hp: 80 + opponentLevel * 12, max_hp: 80 + opponentLevel * 12, attack: 6 + opponentLevel * 2, defense: 3 + opponentLevel, speed: 4 + opponentLevel, strength: 4 + opponentLevel },
     skills: opponent ? getSkillLevelMap(opponent.id) : {},
     xpRange: [10 + player.level * 3, 30 + player.level * 5],
     goldRange: [10 + player.level * 5, 20 + player.level * 10],
   }, 'pvp', null);
+  // Steal unbanked gold from real opponents on win
+  if (result.success && result.won && opponent) {
+    const stolen = (opponent.gold * BANK.pvpTheftPercent) | 0;
+    if (stolen > 0) {
+      upd(opponent.id, { gold: floorZero(opponent.gold - stolen) });
+      const fresh = getPlayer(playerId);
+      upd(playerId, { gold: floorZero(fresh.gold + stolen) });
+      result.stolen = stolen;
+    }
+  }
+  return result;
 }
 
 // ── Loot ──
@@ -434,7 +455,9 @@ export function updateNetworth(playerId) {
   for (const row of getAllEquipment(playerId)) equipValue += EQUIPMENT[row.item_id]?.sellValue || 0;
   let assetValue = 0;
   for (const row of getPlayerAssets(playerId)) assetValue += ASSETS[row.asset_id]?.networthValue || 0;
-  const networth = floorZero(player.gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level + assetValue);
+  let crewValue = 0;
+  for (const row of getPlayerCrew(playerId)) crewValue += CREW[row.crew_id]?.cost || 0;
+  const networth = floorZero(player.gold + player.banked_gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level + assetValue + crewValue);
   upd(playerId, { networth, peak_networth: Math.max(networth, player.peak_networth) });
   return networth;
 }
@@ -549,4 +572,91 @@ export function highestAssetIcon(playerId) {
     if (config && config.cost > bestCost) { best = config; bestCost = config.cost; }
   }
   return best?.icon || null;
+}
+
+// ── Bank — protects gold from PvP theft ──
+
+export function depositGold(playerId, amount) {
+  const player = getPlayer(playerId);
+  if (amount <= 0 || amount > player.gold) return { success: false, error: `Can't deposit ${amount}g` };
+  const fee = (amount * BANK.depositFee) | 0;
+  const deposited = amount - fee;
+  upd(playerId, { gold: floorZero(player.gold - amount), banked_gold: player.banked_gold + deposited });
+  return { success: true, deposited, fee };
+}
+
+export function withdrawGold(playerId, amount) {
+  const player = getPlayer(playerId);
+  if (amount <= 0 || amount > player.banked_gold) return { success: false, error: `Can't withdraw ${amount}g` };
+  upd(playerId, { gold: player.gold + amount, banked_gold: player.banked_gold - amount });
+  return { success: true, withdrawn: amount };
+}
+
+// ── Crew — hired associates give passive bonuses ──
+
+export const getPlayerCrew = playerId => sql('SELECT * FROM crew WHERE player_id=?').all(playerId);
+
+export function hireCrew(playerId, crewId) {
+  const config = CREW[crewId];
+  if (!config) return { success: false, error: 'Unknown crew member' };
+  const player = getPlayer(playerId);
+  if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
+  const existing = sql('SELECT id FROM crew WHERE player_id=? AND crew_id=?').get(playerId, crewId);
+  if (existing) return { success: false, error: 'Already hired' };
+  if (player.gold < config.cost) return { success: false, error: `Need ${config.cost}g` };
+  return tx(() => {
+    upd(playerId, { gold: floorZero(player.gold - config.cost) });
+    sql('INSERT INTO crew(player_id,crew_id) VALUES(?,?)').run(playerId, crewId);
+    return { success: true, crew: config };
+  });
+}
+
+export function getCrewBonuses(playerId) {
+  const bonuses = { attack: 0, defense: 0, speed: 0, strength: 0, goldBonus: 0 };
+  for (const row of getPlayerCrew(playerId)) {
+    const config = CREW[row.crew_id];
+    if (config && config.bonusType in bonuses) bonuses[config.bonusType] += config.bonusValue;
+  }
+  return bonuses;
+}
+
+// ── Gear Sets — matching equipped items grant bonus stats ──
+
+export function getActiveGearSet(playerId) {
+  const equippedIds = new Set(getEquippedItems(playerId).map(row => row.item_id));
+  for (const [setId, set] of Object.entries(GEAR_SETS)) {
+    if (set.items.every(itemId => equippedIds.has(itemId))) return { id: setId, ...set };
+  }
+  return null;
+}
+
+// ── Synthesis — combine 3 items for a chance at higher rarity ──
+
+export function synthesize(playerId, itemRowId1, itemRowId2, itemRowId3) {
+  const player = getPlayer(playerId);
+  if (player.gold < SYNTHESIS.cost) return { success: false, error: `Need ${SYNTHESIS.cost}g` };
+  const rows = [itemRowId1, itemRowId2, itemRowId3].map(id => sql('SELECT * FROM equipment WHERE id=? AND player_id=? AND equipped=0').get(id, playerId));
+  if (rows.some(r => !r)) return { success: false, error: 'Item not found or equipped' };
+  const configs = rows.map(r => EQUIPMENT[r.item_id]);
+  if (configs.some(c => !c)) return { success: false, error: 'Unknown item' };
+  // Use the highest rarity among inputs as the base
+  const RARITY_TIER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  const bestRarity = configs.reduce((best, c) => RARITY_TIER[c.rarity] > RARITY_TIER[best] ? c.rarity : best, 'common');
+  const upgradeChance = SYNTHESIS.upgradeChance[bestRarity];
+  const nextRarity = SYNTHESIS.nextRarity[bestRarity];
+  return tx(() => {
+    // Consume all 3 items + gold
+    for (const row of rows) sql('DELETE FROM equipment WHERE id=?').run(row.id);
+    upd(playerId, { gold: floorZero(player.gold - SYNTHESIS.cost) });
+    // Roll for upgrade
+    const upgraded = nextRarity && Math.random() < upgradeChance;
+    const resultRarity = upgraded ? nextRarity : bestRarity;
+    // Pick random item of result rarity at or below player level
+    const candidates = Object.entries(EQUIPMENT).filter(([, item]) => item.rarity === resultRarity && item.dropLevel <= player.level + 2);
+    if (!candidates.length) return { success: false, error: 'No items available at this rarity' };
+    const [resultItemId, resultConfig] = candidates[randBetween(0, candidates.length - 1)];
+    sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, resultItemId);
+    autoEquipIfBetter(playerId, resultItemId);
+    return { success: true, upgraded, item: resultConfig, consumed: configs.map(c => c.name) };
+  });
 }
