@@ -678,66 +678,37 @@ export function checkMilestones(playerId) {
 export function grind(playerId) {
   regenStamina(playerId);
   collectAssetIncome(playerId);
-  const beforeNetworth = getPlayer(playerId).networth;
-  const log = [];
+  const before = getPlayer(playerId);
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, healed: false, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
 
-  // Fight best enemy x5
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
     const bulk = bulkFight(playerId, enemyId, 5);
-    const streakNow = getPlayer(playerId).win_streak;
-    const streakLabel = getStreakLabel(streakNow);
-    const streakMult = getStreakMultiplier(streakNow);
-
-    // Core result — punchy
-    let fightLine = `⚔️ ${bulk.wins}W/${bulk.losses}L → +${bulk.goldEarned}g +${bulk.xpEarned}xp`;
-    if (streakMult > 1) fightLine += ` (${streakMult}x)`;
-    log.push(fightLine);
-
-    // Streak display
-    if (streakNow >= 5) log.push(`${streakLabel} ${streakNow} streak!`);
-    if (bulk.losses > 0 && streakNow === 0) log.push('💔 Streak broken');
-
-    // Loot — make rare drops feel special
-    for (const item of bulk.loot) {
-      const rarity = item.rarity;
-      if (rarity === 'legendary') log.push(`🌟🌟🌟 LEGENDARY DROP: ${item.icon} ${item.name}!!!`);
-      else if (rarity === 'epic') log.push(`✨ EPIC: ${item.icon} ${item.name}!`);
-      else if (rarity === 'rare') log.push(`💫 ${item.icon} ${item.name}`);
-      else log.push(`🎁 ${item.icon} ${item.name}`);
-    }
-
-    if (bulk.levelsGained) log.push(`🎉 LEVEL UP → Lv.${bulk.endLevel}!`);
-    if (bulk.stoppedReason) log.push(`⏸️ ${bulk.stoppedReason}`);
-  } else {
-    log.push('⏸️ No enemies available');
+    result.wins = bulk.wins; result.losses = bulk.losses;
+    result.goldEarned = bulk.goldEarned; result.xpEarned = bulk.xpEarned;
+    result.loot = bulk.loot; result.stoppedReason = bulk.stoppedReason;
+    if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
   }
 
-  // Auto-heal if below 50% HP
   const afterFight = getPlayer(playerId);
   if (afterFight.hp < afterFight.max_hp * 0.5) {
     const heal = healPlayer(playerId);
-    if (heal.success) log.push(`❤️ Healed`);
+    if (heal.success) result.healed = true;
   }
 
-  // Auto-sell junk
   const junk = sellAllJunk(playerId, 'common');
-  if (junk.success) log.push(`🗑️ +${junk.gold}g junk`);
+  if (junk.success) { result.junkGold = junk.gold; result.junkCount = junk.count; }
 
   updateNetworth(playerId);
-  const player = getPlayer(playerId);
-
-  // Milestones — big dopamine hits
-  const milestones = checkMilestones(playerId);
-  for (const m of milestones) log.push(m.msg);
-
-  // "Almost there" — show progress toward next thing
-  const xpPercent = (player.xp / player.xp_needed * 100) | 0;
-  if (xpPercent >= 80) log.push(`⚡ ${xpPercent}% to Lv.${player.level + 1}`);
-
-  // Networth delta — numbers going up
-  const nwDelta = player.networth - beforeNetworth;
-  if (nwDelta > 0) log.push(`📈 +${nwDelta} networth`);
-
-  return { log, player };
+  const after = getPlayer(playerId);
+  result.streak = after.win_streak;
+  result.bestStreak = after.best_streak;
+  result.streakLabel = getStreakLabel(after.win_streak);
+  result.streakMult = getStreakMultiplier(after.win_streak);
+  result.afterNetworth = after.networth;
+  result.afterGold = after.gold;
+  result.milestones = checkMilestones(playerId);
+  result.player = getPlayer(playerId);
+  result.xpPercent = after.xp / after.xp_needed;
+  return result;
 }

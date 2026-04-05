@@ -8,6 +8,7 @@ import { renderInventory } from '../rendering/views/inventory.js';
 import { renderSkills } from '../rendering/views/skills.js';
 import { renderProfile } from '../rendering/views/profile.js';
 import { renderAssets } from '../rendering/views/assets.js';
+import { renderGrind } from '../rendering/views/grind.js';
 
 const activeView = new Map();
 const lastEnemy = new Map();
@@ -25,6 +26,7 @@ function renderView(playerId, view, combatResult) {
   const player = Player.getPlayer(playerId);
   const viewRenderers = {
     home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard(), Player.highestAssetIcon(playerId)),
+    grind: () => combatResult ? renderGrind(player, combatResult) : renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard(), Player.highestAssetIcon(playerId)),
     fight: () => renderFight(player, combatResult),
     raids: () => renderRaids(player, combatResult),
     assets: () => renderAssets(player, Player.getPlayerAssets(playerId)),
@@ -58,9 +60,14 @@ function executeAction(playerId, action, args = {}) {
   const actions = {
     // ── Primary loop ──
     grind: () => {
-      const { log, player } = Player.grind(playerId);
-      if (player.pending_skill_picks > 0) log.push(`🎯 ${player.pending_skill_picks} skill pick${player.pending_skill_picks > 1 ? 's' : ''} available`);
-      return { success: true, message: log.join('\n') || '⏸️ Out of stamina', view: 'home' };
+      const result = Player.grind(playerId);
+      // Short text summary for the Discord message content
+      let msg = `⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`;
+      if (result.leveled) msg += ` | 🎉 Lv.${result.newLevel}`;
+      if (result.milestones.length) msg += ` | ${result.milestones.map(m => m.msg).join(' | ')}`;
+      if (result.player.pending_skill_picks > 0) msg += ` | 🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`;
+      if (!result.wins && !result.losses) msg = '⏸️ Out of stamina';
+      return { success: true, message: msg, view: 'grind', extra: result };
     },
     // ── Manual fight controls ──
     fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },
