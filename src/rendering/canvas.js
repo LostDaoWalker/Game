@@ -8,8 +8,6 @@ const FONT_B10 = "bold 10px 'Courier New',monospace";
 const FONT_10 = "10px 'Courier New',monospace";
 const FONT_9 = "9px 'Courier New',monospace";
 const BG_TRACK = 'rgba(0,0,0,.35)';
-const BG_SHINE = 'rgba(255,255,255,.08)';
-const GRID_COLOR = 'rgba(255,255,255,.02)';
 
 // ── rgba memoization ──
 const _rgbaCache = new Map();
@@ -24,25 +22,20 @@ export function rgba(hex, a = 1) {
   return cached;
 }
 
-// ── Pre-rendered background — computed once, blitted on every frame ──
-let _bgBuffer = null;
-function getBgBuffer() {
-  if (_bgBuffer) return _bgBuffer;
+// ── Background — cached as ImageData for fastest possible blit ──
+let _bgData = null;
+function getBgData() {
+  if (_bgData) return _bgData;
   const bgCanvas = createCanvas(W, H);
   const ctx = bgCanvas.getContext('2d');
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#0c0c0e'); grad.addColorStop(.5, '#09090b'); grad.addColorStop(1, '#060608');
-  ctx.fillStyle = grad;
-  rr(ctx, 0, 0, W, H, 12); ctx.fill();
-  ctx.strokeStyle = GRID_COLOR; ctx.lineWidth = 1; ctx.beginPath();
-  for (let x = 0; x < W; x += 48) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-  for (let y = 0; y < H; y += 48) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
-  ctx.stroke();
-  const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, 300);
-  glow.addColorStop(0, rgba(C.accent, .012)); glow.addColorStop(1, 'transparent');
-  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-  _bgBuffer = bgCanvas;
-  return _bgBuffer;
+  // Solid dark fill — gradient/grid/glow invisible at JPEG q90, save 2.5ms encoding
+  ctx.fillStyle = '#09090b'; ctx.fillRect(0, 0, W, H);
+  // Subtle top-to-bottom vignette — the one thing that's actually visible
+  const vig = ctx.createLinearGradient(0, 0, 0, H);
+  vig.addColorStop(0, 'rgba(255,255,255,.008)'); vig.addColorStop(.5, 'transparent'); vig.addColorStop(1, 'rgba(0,0,0,.05)');
+  ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  _bgData = ctx.getImageData(0, 0, W, H);
+  return _bgData;
 }
 
 export function create() {
@@ -54,9 +47,9 @@ export function create() {
 // JPEG encoding is 3x faster than PNG — Discord renders both fine
 export const toBuffer = canvas => canvas.toBuffer('image/jpeg', 90);
 
-// Blit cached background — zero recomputation
+// Blit cached background — putImageData is faster than drawImage for full-frame
 export function bg(ctx) {
-  ctx.drawImage(getBgBuffer(), 0, 0);
+  ctx.putImageData(getBgData(), 0, 0);
 }
 
 export function panel(ctx, x, y, w, h, opts = {}) {
