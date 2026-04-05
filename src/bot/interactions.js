@@ -102,7 +102,7 @@ function selectMenu(id, placeholder, options) {
 }
 
 async function sendView(interaction, playerId, view, extra, isReply) {
-  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, extra), { name: 'halcyon.png' })], components: buildUI(view, playerId), content: '' };
+  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, extra), { name: 'halcyon.jpg' })], components: buildUI(view, playerId), content: '' };
   isReply ? await interaction.reply(payload) : await interaction.update(payload);
 }
 
@@ -111,7 +111,7 @@ async function sendResult(interaction, playerId, result, fallback) {
   activeView.set(playerId, view);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'halcyon.png' })],
+    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'halcyon.jpg' })],
     components: buildUI(view, playerId),
   });
 }

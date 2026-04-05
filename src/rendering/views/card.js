@@ -6,52 +6,48 @@ const C = R.colors;
 // Trading card dimensions: 5:7 ratio
 const CARD_W = 350, CARD_H = 490;
 
-function getFrameColor(networth) {
-  let color = FRAME_TIERS[0].color;
-  for (const tier of FRAME_TIERS) if (networth >= tier.min) color = tier.color;
-  return color;
+function getFrame(networth) {
+  let color = FRAME_TIERS[0].color, label = FRAME_TIERS[0].label;
+  for (const tier of FRAME_TIERS) if (networth >= tier.min) { color = tier.color; label = tier.label; }
+  return { color, label };
 }
 
-function getFrameLabel(networth) {
-  let label = FRAME_TIERS[0].label;
-  for (const tier of FRAME_TIERS) if (networth >= tier.min) label = tier.label;
-  return label;
-}
+// ── Pre-rendered avatar art cache — patterns are static, render once ──
+const ART_W = 310, ART_H = 260;
+const _artCache = new Map();
 
-function drawAvatarArt(ctx, x, y, w, h, avatar) {
-  const config = AVATARS[avatar] || AVATARS.default;
-  // Background
+function getAvatarArt(avatarId) {
+  let cached = _artCache.get(avatarId);
+  if (cached) return cached;
+  const config = AVATARS[avatarId] || AVATARS.default;
+  const art = createCanvas(ART_W, ART_H);
+  const ctx = art.getContext('2d');
   ctx.fillStyle = config.bg;
-  ctx.fillRect(x, y, w, h);
-
-  // Pattern
+  ctx.fillRect(0, 0, ART_W, ART_H);
   ctx.globalAlpha = 0.15;
   ctx.fillStyle = config.accent;
   const patterns = {
-    diamond: () => { for (let dy = 0; dy < h; dy += 30) for (let dx = 0; dx < w; dx += 30) { ctx.save(); ctx.translate(x + dx + 15, y + dy + 15); ctx.rotate(Math.PI / 4); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); } },
-    grid: () => { for (let dy = 0; dy < h; dy += 20) ctx.fillRect(x, y + dy, w, 1); for (let dx = 0; dx < w; dx += 20) ctx.fillRect(x + dx, y, 1, h); },
-    bars: () => { for (let dy = 0; dy < h; dy += 12) ctx.fillRect(x, y + dy, w, 6); },
-    cross: () => { for (let dy = 0; dy < h; dy += 40) for (let dx = 0; dx < w; dx += 40) { ctx.fillRect(x + dx + 15, y + dy, 10, 40); ctx.fillRect(x + dx, y + dy + 15, 40, 10); } },
-    dots: () => { for (let dy = 0; dy < h; dy += 24) for (let dx = 0; dx < w; dx += 24) { ctx.beginPath(); ctx.arc(x + dx + 12, y + dy + 12, 5, 0, Math.PI * 2); ctx.fill(); } },
-    flame: () => { for (let dy = 0; dy < h; dy += 20) { const wave = Math.sin(dy * 0.1) * 20; ctx.fillRect(x + wave + w / 2 - 30, y + dy, 60, 10); } },
-    wave: () => { for (let dy = 0; dy < h; dy += 4) { const wave = Math.sin(dy * 0.05) * 40; ctx.fillRect(x + w / 2 + wave - 20, y + dy, 40, 2); } },
-    stripe: () => { for (let d = -h; d < w + h; d += 16) { ctx.beginPath(); ctx.moveTo(x + d, y); ctx.lineTo(x + d - h, y + h); ctx.lineWidth = 4; ctx.strokeStyle = config.accent; ctx.stroke(); } },
+    diamond: () => { for (let y = 0; y < ART_H; y += 30) for (let x = 0; x < ART_W; x += 30) { ctx.save(); ctx.translate(x + 15, y + 15); ctx.rotate(Math.PI / 4); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); } },
+    grid: () => { for (let y = 0; y < ART_H; y += 20) ctx.fillRect(0, y, ART_W, 1); for (let x = 0; x < ART_W; x += 20) ctx.fillRect(x, 0, 1, ART_H); },
+    bars: () => { for (let y = 0; y < ART_H; y += 12) ctx.fillRect(0, y, ART_W, 6); },
+    cross: () => { for (let y = 0; y < ART_H; y += 40) for (let x = 0; x < ART_W; x += 40) { ctx.fillRect(x + 15, y, 10, 40); ctx.fillRect(x, y + 15, 40, 10); } },
+    dots: () => { for (let y = 0; y < ART_H; y += 24) for (let x = 0; x < ART_W; x += 24) { ctx.beginPath(); ctx.arc(x + 12, y + 12, 5, 0, Math.PI * 2); ctx.fill(); } },
+    flame: () => { for (let y = 0; y < ART_H; y += 20) { const w = Math.sin(y * 0.1) * 20; ctx.fillRect(w + ART_W / 2 - 30, y, 60, 10); } },
+    wave: () => { for (let y = 0; y < ART_H; y += 4) { const w = Math.sin(y * 0.05) * 40; ctx.fillRect(ART_W / 2 + w - 20, y, 40, 2); } },
+    stripe: () => { ctx.lineWidth = 4; ctx.strokeStyle = config.accent; for (let d = -ART_H; d < ART_W + ART_H; d += 16) { ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d - ART_H, ART_H); ctx.stroke(); } },
   };
   (patterns[config.pattern] || patterns.diamond)();
   ctx.globalAlpha = 1;
-
-  // Accent glow in center
-  const glow = ctx.createRadialGradient(x + w / 2, y + h / 2, 0, x + w / 2, y + h / 2, w * 0.6);
-  glow.addColorStop(0, R.rgba(config.accent, 0.08));
-  glow.addColorStop(1, 'transparent');
-  ctx.fillStyle = glow;
-  ctx.fillRect(x, y, w, h);
+  const glow = ctx.createRadialGradient(ART_W / 2, ART_H / 2, 0, ART_W / 2, ART_H / 2, ART_W * 0.6);
+  glow.addColorStop(0, R.rgba(config.accent, 0.08)); glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, ART_W, ART_H);
+  _artCache.set(avatarId, art);
+  return art;
 }
 
 // Render just the card (reusable)
 export function drawCard(ctx, centerX, centerY, player) {
-  const frameColor = getFrameColor(player.networth);
-  const frameLabel = getFrameLabel(player.networth);
+  const { color: frameColor, label: frameLabel } = getFrame(player.networth);
   const x = centerX - CARD_W / 2, y = centerY - CARD_H / 2;
 
   // Outer frame glow
@@ -86,9 +82,9 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.fillText(`Lv.${player.level} — ${frameLabel}`, centerX, y + 48);
   ctx.textAlign = 'left';
 
-  // ── Avatar art area ──
+  // ── Avatar art area — blitted from cache ──
   const artX = x + 20, artY = y + 62, artW = CARD_W - 40, artH = 260;
-  drawAvatarArt(ctx, artX, artY, artW, artH, player.avatar);
+  ctx.drawImage(getAvatarArt(player.avatar), artX, artY);
   // Art border
   ctx.strokeStyle = R.rgba(frameColor, 0.3);
   ctx.lineWidth = 1;
@@ -141,5 +137,5 @@ export function renderCard(player) {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   drawCard(ctx, canvas.width / 2, canvas.height / 2, player);
-  return canvas.toBuffer('image/png');
+  return canvas.toBuffer('image/jpeg', 90);
 }
