@@ -8,7 +8,8 @@
     "start": "node --env-file=.env src/index.js",
     "dev": "node --env-file=.env --watch src/index.js",
     "deploy-commands": "node --env-file=.env src/deploy-commands.js",
-    "test": "node test.js"
+    "test": "node --env-file=.env test.js",
+    "preview": "node --env-file=.env preview.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
