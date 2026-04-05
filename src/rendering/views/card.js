@@ -1,7 +1,6 @@
 import { createCanvas } from '@napi-rs/canvas';
 import { AVATARS, FRAME_TIERS } from '../../core/config.js';
 import * as R from '../canvas.js';
-const C = R.colors;
 
 const CARD_W = 350, CARD_H = 490;
 
@@ -11,19 +10,16 @@ function getFrame(networth) {
   return { color, label };
 }
 
-// ── Full-bleed avatar art cache — fills entire card ──
+// ── Full-bleed avatar art cache ──
 const _artCache = new Map();
-
 function getAvatarArt(avatarId) {
   let cached = _artCache.get(avatarId);
   if (cached) return cached;
   const config = AVATARS[avatarId] || AVATARS.default;
   const art = createCanvas(CARD_W, CARD_H);
   const ctx = art.getContext('2d');
-  ctx.fillStyle = config.bg;
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
-  ctx.globalAlpha = 0.2;
-  ctx.fillStyle = config.accent;
+  ctx.fillStyle = config.bg; ctx.fillRect(0, 0, CARD_W, CARD_H);
+  ctx.globalAlpha = 0.2; ctx.fillStyle = config.accent;
   const W = CARD_W, H = CARD_H;
   const patterns = {
     diamond: () => { for (let y = 0; y < H; y += 30) for (let x = 0; x < W; x += 30) { ctx.save(); ctx.translate(x + 15, y + 15); ctx.rotate(Math.PI / 4); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); } },
@@ -37,7 +33,6 @@ function getAvatarArt(avatarId) {
   };
   (patterns[config.pattern] || patterns.diamond)();
   ctx.globalAlpha = 1;
-  // Center glow
   const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.8);
   glow.addColorStop(0, R.rgba(config.accent, 0.1)); glow.addColorStop(1, 'transparent');
   ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
@@ -46,7 +41,7 @@ function getAvatarArt(avatarId) {
 }
 
 export function drawCard(ctx, centerX, centerY, player) {
-  const { color: frameColor, label: frameLabel } = getFrame(player.networth);
+  const { color: frameColor } = getFrame(player.networth);
   const x = centerX - CARD_W / 2, y = centerY - CARD_H / 2;
 
   // Frame glow
@@ -55,55 +50,33 @@ export function drawCard(ctx, centerX, centerY, player) {
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Clip to card shape, blit full-bleed avatar art
+  // Full-bleed art clipped to card
   ctx.save();
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.clip();
   ctx.drawImage(getAvatarArt(player.avatar), x, y);
 
-  // Top scrim — dark gradient for username readability
-  const topScrim = ctx.createLinearGradient(x, y, x, y + 90);
-  topScrim.addColorStop(0, 'rgba(0,0,0,.7)'); topScrim.addColorStop(1, 'transparent');
-  ctx.fillStyle = topScrim; ctx.fillRect(x, y, CARD_W, 90);
+  // Top scrim for username
+  const topScrim = ctx.createLinearGradient(x, y, x, y + 60);
+  topScrim.addColorStop(0, 'rgba(0,0,0,.6)'); topScrim.addColorStop(1, 'transparent');
+  ctx.fillStyle = topScrim; ctx.fillRect(x, y, CARD_W, 60);
 
-  // Bottom scrim — dark gradient for networth readability
-  const botScrim = ctx.createLinearGradient(x, y + CARD_H - 120, x, y + CARD_H);
-  botScrim.addColorStop(0, 'transparent'); botScrim.addColorStop(1, 'rgba(0,0,0,.8)');
-  ctx.fillStyle = botScrim; ctx.fillRect(x, y + CARD_H - 120, CARD_W, 120);
+  // Bottom scrim for networth
+  const botScrim = ctx.createLinearGradient(x, y + CARD_H - 80, x, y + CARD_H);
+  botScrim.addColorStop(0, 'transparent'); botScrim.addColorStop(1, 'rgba(0,0,0,.7)');
+  ctx.fillStyle = botScrim; ctx.fillRect(x, y + CARD_H - 80, CARD_W, 80);
 
   ctx.restore();
 
-  // Inner border
-  ctx.strokeStyle = R.rgba(frameColor, 0.3); ctx.lineWidth = 1;
-  R.rr(ctx, x + 4, y + 4, CARD_W - 8, CARD_H - 8, 10); ctx.stroke();
-
-  // ── Username (top center) ──
+  // Username — top center
   ctx.fillStyle = '#fafafa';
   ctx.font = "bold 22px 'Courier New',monospace";
   ctx.textAlign = 'center';
-  ctx.fillText(player.username, centerX, y + 22);
+  ctx.fillText(player.username, centerX, y + 18);
 
-  // Level + frame label
-  ctx.font = "12px 'Courier New',monospace";
-  ctx.fillStyle = frameColor;
-  ctx.fillText(`Lv.${player.level} — ${frameLabel}`, centerX, y + 46);
-
-  // ── Stats (center area, subtle) ──
-  ctx.fillStyle = R.rgba('#fafafa', 0.5);
-  ctx.font = "11px 'Courier New',monospace";
-  ctx.fillText(`⚔${player.attack}  🛡${player.defense}  💪${player.strength}  ⚡${player.speed}`, centerX, y + CARD_H - 120);
-
-  ctx.fillStyle = R.rgba('#fafafa', 0.35);
-  ctx.font = "10px 'Courier New',monospace";
-  ctx.fillText(`${player.wins}W / ${player.losses}L  |  ${player.win_streak} streak`, centerX, y + CARD_H - 104);
-
-  // ── Networth (bottom, huge) ──
+  // Networth — bottom center
   ctx.fillStyle = frameColor;
   ctx.font = "bold 36px 'Courier New',monospace";
-  ctx.fillText(R.fmt(player.networth), centerX, y + CARD_H - 68);
-
-  ctx.fillStyle = R.rgba('#fafafa', 0.4);
-  ctx.font = "10px 'Courier New',monospace";
-  ctx.fillText('NETWORTH', centerX, y + CARD_H - 36);
+  ctx.fillText(R.fmt(player.networth), centerX, y + CARD_H - 46);
   ctx.textAlign = 'left';
 
   return { x, y, w: CARD_W, h: CARD_H, frameColor };
