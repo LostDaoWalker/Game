@@ -194,3 +194,32 @@ export const ECO = Object.freeze({
 });
 
 export const CANVAS = Object.freeze({ width: 800, height: 500 });
+
+// ── Milestones — trigger once, never again ──
+export const MILESTONES = Object.freeze([
+  { id: 'first_blood', check: p => p.wins >= 1, msg: '🏅 First Blood — Won your first fight!' },
+  { id: 'win_10', check: p => p.wins >= 10, msg: '🏅 Scrapper — 10 wins' },
+  { id: 'win_100', check: p => p.wins >= 100, msg: '🏆 Veteran — 100 wins' },
+  { id: 'win_500', check: p => p.wins >= 500, msg: '👑 Legend — 500 wins' },
+  { id: 'lv5', check: p => p.level >= 5, msg: '⭐ Level 5 — Moving up' },
+  { id: 'lv10', check: p => p.level >= 10, msg: '⭐⭐ Level 10 — Getting serious' },
+  { id: 'lv20', check: p => p.level >= 20, msg: '⭐⭐⭐ Level 20 — Elite' },
+  { id: 'gold_1k', check: p => p.gold + p.banked_gold >= 1000, msg: '💰 First Thousand — 1,000g total' },
+  { id: 'gold_10k', check: p => p.gold + p.banked_gold >= 10000, msg: '💰💰 Loaded — 10,000g total' },
+  { id: 'net_10k', check: p => p.networth >= 10000, msg: '📈 Five Figures — 10K networth' },
+  { id: 'net_100k', check: p => p.networth >= 100000, msg: '📈📈 Six Figures — 100K networth' },
+  { id: 'net_1m', check: p => p.networth >= 1000000, msg: '📈📈📈 Millionaire — 1M networth' },
+  { id: 'streak_10', check: p => p.best_streak >= 10, msg: '🔥 On Fire — 10 win streak' },
+  { id: 'streak_25', check: p => p.best_streak >= 25, msg: '🔥🔥 Unstoppable — 25 win streak' },
+  { id: 'pvp_1', check: p => p.pvp_wins >= 1, msg: '🥊 Contender — First PvP win' },
+  { id: 'raid_1', check: p => p.raids_completed >= 1, msg: '👑 Boss Down — First raid clear' },
+]);
+
+// ── Streak multiplier tiers ──
+export const STREAK_TIERS = Object.freeze([
+  { min: 0, mult: 1.0, label: '' },
+  { min: 5, mult: 1.1, label: '🔥' },
+  { min: 10, mult: 1.25, label: '🔥🔥' },
+  { min: 20, mult: 1.5, label: '🔥🔥🔥' },
+  { min: 50, mult: 2.0, label: '💎🔥' },
+]);

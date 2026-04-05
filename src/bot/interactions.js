@@ -37,11 +37,20 @@ function renderView(playerId, view, combatResult) {
 
 function formatCombatResult(result, view) {
   if (!result.success) return result;
-  let message = result.won ? `⚔️ Beat ${result.foe.name}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${result.foe.name}. +${result.xp}xp`;
-  if (result.lootItem) message += result.autoEquipped ? ` 🎁 ${result.lootItem.icon} ${result.lootItem.name} (auto-equipped!)` : ` 🎁 ${result.lootItem.icon} ${result.lootItem.name}!`;
-  if (result.leveled) message += ` 🎉 Level ${result.newLevel}!`;
-  if (result.pvpBonus) message += ` 💰 +${result.pvpBonus}g bonus!`;
-  return { success: true, message, view, extra: result };
+  const lines = [];
+  lines.push(result.won ? `⚔️ Beat ${result.foe.name}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${result.foe.name}. +${result.xp}xp`);
+  if (result.streakMult > 1) lines[0] += ` (${result.streakMult}x)`;
+  if (result.streak >= 5) lines.push(`${Player.getStreakLabel(result.streak)} ${result.streak} streak!`);
+  if (!result.won && result.streak === 0) lines.push('💔 Streak broken');
+  if (result.lootItem) {
+    const r = result.lootItem.rarity;
+    lines.push(r === 'legendary' ? `🌟🌟🌟 LEGENDARY: ${result.lootItem.icon} ${result.lootItem.name}!!!` :
+      r === 'epic' ? `✨ EPIC: ${result.lootItem.icon} ${result.lootItem.name}!` :
+      `🎁 ${result.lootItem.icon} ${result.lootItem.name}${result.autoEquipped ? ' (equipped!)' : ''}`);
+  }
+  if (result.leveled) lines.push(`🎉 LEVEL UP → Lv.${result.newLevel}!`);
+  if (result.pvpBonus) lines.push(`💰 +${result.pvpBonus}g bonus!`);
+  return { success: true, message: lines.join('\n'), view, extra: result };
 }
 
 function executeAction(playerId, action, args = {}) {
@@ -50,8 +59,8 @@ function executeAction(playerId, action, args = {}) {
     // ── Primary loop ──
     grind: () => {
       const { log, player } = Player.grind(playerId);
-      if (player.pending_skill_picks > 0) log.push(`🎯 ${player.pending_skill_picks} skill pick${player.pending_skill_picks > 1 ? 's' : ''} waiting!`);
-      return { success: true, message: log.join(' | ') || 'Out of stamina — wait or heal', view: 'home' };
+      if (player.pending_skill_picks > 0) log.push(`🎯 ${player.pending_skill_picks} skill pick${player.pending_skill_picks > 1 ? 's' : ''} available`);
+      return { success: true, message: log.join('\n') || '⏸️ Out of stamina', view: 'home' };
     },
     // ── Manual fight controls ──
     fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },
