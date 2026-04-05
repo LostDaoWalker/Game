@@ -165,6 +165,34 @@ ok('level >= 1', final.level >= 1);
 ok('win_streak >= 0', final.win_streak >= 0);
 ok('banked_gold >= 0', final.banked_gold >= 0);
 
+// ── Config integrity — catch broken references before they hit production ──
+import { GEAR_SETS, ZONES } from './src/core/config.js';
+for (const [setId, set] of Object.entries(GEAR_SETS)) {
+  for (const itemId of set.items) ok(`gear set ${setId} item ${itemId} exists`, !!EQUIPMENT[itemId]);
+}
+for (const [raidId, raid] of Object.entries(RAIDS)) {
+  for (const itemId of raid.lootTable) ok(`raid ${raidId} loot ${itemId} exists`, !!EQUIPMENT[itemId]);
+}
+for (const [enemyId, enemy] of Object.entries(ENEMIES)) {
+  ok(`enemy ${enemyId} zone ${enemy.zone} exists`, !!ZONES[enemy.zone]);
+}
+
+// ── Combat balance — 100 fights, verify no absurd outcomes ──
+P.getOrCreatePlayer('balance', 'BalanceTest');
+P.regenStamina('balance');
+let minGold = Infinity, maxGold = 0, minXp = Infinity, maxXp = 0;
+for (let i = 0; i < 50; i++) {
+  P.regenStamina('balance');
+  const r = P.fightEnemy('balance', 'troublemaker');
+  if (r.success) {
+    minGold = Math.min(minGold, r.gold); maxGold = Math.max(maxGold, r.gold);
+    minXp = Math.min(minXp, r.xp); maxXp = Math.max(maxXp, r.xp);
+  }
+}
+ok('combat gold range sane', minGold >= 0 && maxGold < 10000);
+ok('combat xp range sane', minXp >= 0 && maxXp < 10000);
+ok('combat gold has variance', maxGold > minGold || minGold === 0);
+
 getDb().close();
 rmSync('data', { recursive: true, force: true });
 

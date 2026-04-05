@@ -6,4 +6,5 @@ if (!TOKEN || !CID) { console.error('Missing DISCORD_TOKEN or CLIENT_ID'); proce
 const cmd = new SlashCommandBuilder().setName('halcyon').setDescription('Launch HALCYON — Wander. Grow. Prevail.');
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 const route = GID ? Routes.applicationGuildCommands(CID, GID) : Routes.applicationCommands(CID);
-rest.put(route, { body: [cmd.toJSON()] }).then(() => console.log('✓ Commands deployed')).catch(e => { console.error(e); process.exit(1); });
+const mode = GID ? `guild ${GID} (instant)` : 'global (up to 1hr to propagate)';
+rest.put(route, { body: [cmd.toJSON()] }).then(() => console.log(`✓ /halcyon deployed — ${mode}`)).catch(e => { console.error(e); process.exit(1); });
