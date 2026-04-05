@@ -195,6 +195,29 @@ export const ECO = Object.freeze({
 
 export const CANVAS = Object.freeze({ width: 800, height: 500 });
 
+// ── Avatars — player-selectable card art ──
+// Each avatar is a generated pattern (replace with PNGs later via loadImage)
+export const AVATARS = Object.freeze({
+  default:  { name: 'Shadow',    bg: '#1a1a2e', accent: '#e94560', pattern: 'diamond' },
+  neon:     { name: 'Neon',      bg: '#0a0a1a', accent: '#00f5d4', pattern: 'grid' },
+  gold:     { name: 'Gold Rush', bg: '#1a1400', accent: '#f5c542', pattern: 'bars' },
+  crimson:  { name: 'Crimson',   bg: '#1a0a0a', accent: '#dc2626', pattern: 'cross' },
+  ice:      { name: 'Arctic',    bg: '#0a1a2e', accent: '#38bdf8', pattern: 'dots' },
+  ember:    { name: 'Ember',     bg: '#1a0f0a', accent: '#fb923c', pattern: 'flame' },
+  violet:   { name: 'Violet',    bg: '#1a0a2e', accent: '#a78bfa', pattern: 'wave' },
+  mint:     { name: 'Mint',      bg: '#0a1a14', accent: '#4ade80', pattern: 'stripe' },
+});
+
+// ── Networth frame tiers — card border color by wealth ──
+export const FRAME_TIERS = Object.freeze([
+  { min: 0,        color: '#52525b', label: 'Bronze' },
+  { min: 1000,     color: '#a1a1aa', label: 'Silver' },
+  { min: 10000,    color: '#f5c542', label: 'Gold' },
+  { min: 100000,   color: '#38bdf8', label: 'Diamond' },
+  { min: 1000000,  color: '#a78bfa', label: 'Legendary' },
+  { min: 10000000, color: '#fb923c', label: 'Mythic' },
+]);
+
 // ── Milestones — trigger once, never again ──
 export const MILESTONES = Object.freeze([
   { id: 'first_blood', check: p => p.wins >= 1, msg: '🏅 First Blood — Won your first fight!' },

@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, BANK, MILESTONES, STREAK_TIERS } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, BANK, MILESTONES, STREAK_TIERS, AVATARS } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -640,6 +640,14 @@ export function getActiveGearSet(playerId) {
     if (set.items.every(itemId => equippedIds.has(itemId))) return { id: setId, ...set };
   }
   return null;
+}
+
+// ── Avatar ──
+
+export function setAvatar(playerId, avatarId) {
+  if (!AVATARS[avatarId]) return { success: false, error: 'Unknown avatar' };
+  upd(playerId, { avatar: avatarId });
+  return { success: true, avatar: AVATARS[avatarId] };
 }
 
 // ── Streak multiplier ──

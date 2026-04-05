@@ -38,7 +38,8 @@ export function getDb() {
       raids_completed INTEGER NOT NULL DEFAULT 0, bosses_killed INTEGER NOT NULL DEFAULT 0,
       networth INTEGER NOT NULL DEFAULT 100 CHECK(networth >= 0),
       peak_networth INTEGER NOT NULL DEFAULT 100,
-      pending_skill_picks INTEGER NOT NULL DEFAULT 0 CHECK(pending_skill_picks >= 0)
+      pending_skill_picks INTEGER NOT NULL DEFAULT 0 CHECK(pending_skill_picks >= 0),
+      avatar TEXT NOT NULL DEFAULT 'default'
     );
     CREATE TABLE IF NOT EXISTS equipment (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

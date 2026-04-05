@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, AVATARS, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
@@ -87,6 +87,7 @@ function executeAction(playerId, action, args = {}) {
     sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     sell_outgrown: () => { const r = Player.sellBelowEquipped(playerId); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}`, view: 'skills' } : r; },
+    set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `Avatar set: ${r.avatar.name}`, view: 'profile' } : r; },
   };
   const handler = actions[action];
   if (!handler) return { success: false, message: 'Unknown action' };
@@ -136,11 +137,11 @@ export async function handleSelectMenu(interaction) {
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
   const map = {
     fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }],
-    equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }],
+    equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }], avatar_select: ['set_avatar', { avatarId: val }],
     buy_asset: ['buy_asset', { assetId: val }], hire_crew: ['hire_crew', { crewId: val }],
   };
   const [action, args] = map[menuId] || ['unknown', {}];
-  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home' }[menuId];
+  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', avatar_select: 'profile' }[menuId];
   return sendResult(interaction, playerId, executeAction(playerId, action, args), fallback);
 }
 
@@ -200,6 +201,12 @@ function buildUI(view, playerId) {
     const hireable = Object.entries(CREW).filter(([id, c]) => !hired.has(id) && player.level >= c.minLevel);
     if (hireable.length) rows.push(selectMenu('hire_crew', '🤵 Hire crew...',
       hireable.map(([id, c]) => ({ label: `${c.icon} ${c.name} (${c.cost}g)`, description: `+${c.bonusValue} ${c.bonusType}`, value: id }))));
+  }
+  if (view === 'profile' && player) {
+    rows.push(selectMenu('avatar_select', '🎨 Choose avatar...',
+      Object.entries(AVATARS).map(([id, av]) => ({
+        label: av.name, description: player.avatar === id ? '✓ Current' : 'Select this avatar', value: id,
+      }))));
   }
   if (player?.pending_skill_picks > 0) {
     const offers = Player.getSkillOffers(playerId);
