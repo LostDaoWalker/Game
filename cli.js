@@ -29,39 +29,59 @@ if (gameCommands.has(cmd)) {
   if (cmd === 'sim') {
     const count = parseInt(args[0]) || 20;
     const P = await import('./src/core/player.js');
+    const { renderCard } = await import('./src/rendering/views/card.js');
+    const { renderGrind } = await import('./src/rendering/views/grind.js');
+    const { writeFileSync, mkdirSync } = await import('fs');
+    mkdirSync('data/sim', { recursive: true });
     getDb();
     P.getOrCreatePlayer('sim', 'SimPlayer');
-    console.log('LVL  GOLD     NET      ASSETS  STREAK  W/L');
-    console.log('───  ───────  ───────  ──────  ──────  ────');
+    console.log(' #   LVL  GOLD     NET      STREAK  IMAGE');
+    console.log('───  ───  ───────  ───────  ──────  ─────');
     for (let i = 0; i < count; i++) {
       const result = P.grind('sim');
       const p = result.player;
-      const assets = P.getPlayerAssets('sim').length;
-      const wl = `${p.wins}/${p.losses}`;
+      // Render grind result at each step
+      const grindFile = `data/sim/grind_${String(i + 1).padStart(3, '0')}.jpg`;
+      writeFileSync(grindFile, renderGrind(p, result));
       console.log(
+        `${String(i + 1).padStart(3)}  ` +
         `${String(p.level).padStart(3)}  ` +
         `${String(p.gold).padStart(7)}  ` +
         `${String(p.networth).padStart(7)}  ` +
-        `${String(assets).padStart(6)}  ` +
         `${String(p.win_streak).padStart(6)}  ` +
-        `${wl.padStart(4)}`
+        grindFile
       );
     }
+    // Final card
     const final = P.getPlayer('sim');
-    console.log(`\nFinal: Lv.${final.level} | ${final.gold}g | ${final.networth} net | ${final.win_streak} streak`);
+    writeFileSync('data/sim/final_card.jpg', renderCard(final));
+    console.log(`\nFinal: Lv.${final.level} | ${final.gold}g | ${final.networth} net`);
+    console.log(`Card:  data/sim/final_card.jpg`);
+    console.log(`Grind: data/sim/grind_001.jpg → grind_${String(count).padStart(3, '0')}.jpg`);
     getDb().close();
 
   } else if (cmd === 'card') {
     const { renderCard } = await import('./src/rendering/views/card.js');
+    const { AVATARS } = await import('./src/core/config.js');
     const P = await import('./src/core/player.js');
     const { writeFileSync, mkdirSync } = await import('fs');
-    getDb();
-    const avatarId = args[0] || 'default';
-    P.getOrCreatePlayer('cardpreview', 'Preview');
-    P.setAvatar('cardpreview', avatarId);
     mkdirSync('data', { recursive: true });
-    writeFileSync('data/card.jpg', renderCard(P.getPlayer('cardpreview')));
-    console.log(`✓ data/card.jpg (avatar: ${avatarId})`);
+    getDb();
+    P.getOrCreatePlayer('cardpreview', 'Preview');
+    const avatarId = args[0];
+    if (avatarId) {
+      P.setAvatar('cardpreview', avatarId);
+      writeFileSync('data/card.jpg', renderCard(P.getPlayer('cardpreview')));
+      console.log(`✓ data/card.jpg (avatar: ${avatarId})`);
+    } else {
+      // Render every avatar
+      for (const id of Object.keys(AVATARS)) {
+        P.setAvatar('cardpreview', id);
+        writeFileSync(`data/card_${id}.jpg`, renderCard(P.getPlayer('cardpreview')));
+        console.log(`  ✓ data/card_${id}.jpg`);
+      }
+      console.log(`\n${Object.keys(AVATARS).length} avatars rendered`);
+    }
     getDb().close();
 
   } else if (cmd === 'db') {
