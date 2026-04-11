@@ -49,9 +49,6 @@ function formatCombatResult(result, view) {
   if (!result.success) return result;
   const lines = [];
   lines.push(result.won ? `⚔️ Beat ${result.foe.name}! +${result.gold}g +${result.xp}xp` : `💀 Lost to ${result.foe.name}. +${result.xp}xp`);
-  if (result.streakMult > 1) lines[0] += ` (${result.streakMult}x)`;
-  if (result.streak >= 5) lines.push(`${Player.getStreakLabel(result.streak)} ${result.streak} streak!`);
-  if (!result.won && result.streak === 0) lines.push('💔 Streak broken');
   if (result.lootItem) {
     const r = result.lootItem.rarity;
     lines.push(r === 'legendary' ? `🌟 LEGENDARY: ${result.lootItem.icon} ${result.lootItem.name}!!!` :
@@ -59,7 +56,6 @@ function formatCombatResult(result, view) {
       `🎁 ${result.lootItem.icon} ${result.lootItem.name}${result.autoEquipped ? ' (equipped!)' : ''}`);
   }
   if (result.leveled) lines.push(`🎉 LEVEL UP → Lv.${result.newLevel}!`);
-  if (result.pvpBonus) lines.push(`💰 +${result.pvpBonus}g bonus!`);
   return { success: true, message: lines.join('\n'), view, extra: result };
 }
 
@@ -70,25 +66,18 @@ function executeAction(playerId, action, args = {}) {
       const result = Player.grind(playerId);
       let msg = `⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`;
       if (result.leveled) msg += ` | 🎉 Lv.${result.newLevel}`;
-      if (result.milestones.length) msg += ` | ${result.milestones.map(m => m.msg).join(' | ')}`;
       if (result.player.pending_skill_picks > 0) msg += ` | 🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`;
       if (!result.wins && !result.losses) msg = '⏸️ Out of stamina';
       return { success: true, message: msg, view: 'grind', extra: result };
     },
     fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },
-    fight_again: () => { const eid = lastEnemy.get(playerId) || Player.bestEnemy(playerId); if (!eid) return { success: false, message: 'No enemy' }; lastEnemy.set(playerId, eid); return formatCombatResult(Player.fightEnemy(playerId, eid), 'fight'); },
-    bulk_fight: () => { const eid = lastEnemy.get(playerId) || Player.bestEnemy(playerId); if (!eid) return { success: false, message: 'No enemy' }; lastEnemy.set(playerId, eid); const r = Player.bulkFight(playerId, eid, 5); return { success: true, message: `${r.wins}W/${r.losses}L +${r.goldEarned}g +${r.xpEarned}xp${r.loot.length ? ` ${r.loot.length} drops` : ''}${r.levelsGained ? ` 🎉 Lv.${r.endLevel}` : ''}`, view: 'fight' }; },
-    pvp: () => formatCombatResult(Player.pvpFight(playerId), 'fight'),
     raid: () => formatCombatResult(Player.fightRaid(playerId, args.raidId), 'raids'),
     heal: () => { const r = Player.healPlayer(playerId); return r.success ? { success: true, message: `❤️ Healed ${r.healed} HP (-${r.cost}g)`, view: null } : r; },
     buy_asset: () => { const r = Player.buyAsset(playerId, args.assetId); return r.success ? { success: true, message: `Bought ${r.asset.icon} ${r.asset.name}!`, view: 'assets' } : r; },
     hire_crew: () => { const r = Player.hireCrew(playerId, args.crewId); return r.success ? { success: true, message: `Hired ${r.crew.icon} ${r.crew.name}!`, view: 'home' } : r; },
-    deposit: () => { const p = Player.getPlayer(playerId); const amt = (p.gold * 0.5) | 0 || p.gold; const r = Player.depositGold(playerId, amt); return r.success ? { success: true, message: `🏦 Banked ${r.deposited}g`, view: null } : r; },
-    withdraw: () => { const p = Player.getPlayer(playerId); const r = Player.withdrawGold(playerId, p.banked_gold); return r.success ? { success: true, message: `🏦 Withdrew ${r.withdrawn}g`, view: null } : r; },
     daily: () => { const r = Player.claimDaily(playerId); return r.success ? { success: true, message: `🎁 +${r.gold}g (streak ${r.streak}/${r.maxStreak})`, view: null } : r; },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
     sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
-    sell_outgrown: () => { const r = Player.sellBelowEquipped(playerId); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}`, view: 'skills' } : r; },
     set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}`, view: 'profile' } : r; },
   };
@@ -157,8 +146,6 @@ function buildUI(view, playerId) {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('daily').setLabel('🎁').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('deposit').setLabel('🏦').setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId('pvp').setLabel('🥊').setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId('heal').setLabel('❤️').setStyle(ButtonStyle.Secondary)),
     new ActionRowBuilder().addComponents(
       ...TABS.map(tab =>
@@ -168,9 +155,6 @@ function buildUI(view, playerId) {
   ];
 
   if (view === 'fight') {
-    rows.push(new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('fight_again').setLabel('⚔️ Again').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('bulk_fight').setLabel('⚔️ x5').setStyle(ButtonStyle.Danger)));
     if (player) rows.push(selectMenu('fight_select', 'Choose enemy...',
       Object.entries(ENEMIES).filter(([, e]) => player.level >= e.minLevel).map(([id, e]) => ({
         label: `${e.icon} ${e.name}`, description: `Lv.${e.minLevel}+ | ⚡${ZONES[e.zone]?.staminaCost || 1}`, value: id }))));
@@ -190,8 +174,7 @@ function buildUI(view, playerId) {
       rows.push(selectMenu('equip', 'Equip item...',
         unequipped.slice(0, 24).map(r => { const c = EQUIPMENT[r.item_id]; return c ? { label: `${c.icon} ${c.name} (${c.slot})`, description: Object.entries(c.stats).map(([k, v]) => `+${v} ${k}`).join(', '), value: `${r.id}` } : null; }).filter(Boolean)));
       rows.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('sell_junk').setLabel('Sell Junk').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('sell_outgrown').setLabel('Sell Outgrown').setStyle(ButtonStyle.Secondary)));
+        new ButtonBuilder().setCustomId('sell_junk').setLabel('Sell Junk').setStyle(ButtonStyle.Secondary)));
     }
   }
   if (view === 'home' && player) {

@@ -26,13 +26,8 @@ function drawZones(ctx, bx, by, p) {
     }
     i++;
   }
-  // PvP
-  const pvpY = by + 168;
-  R.panel(ctx, bx, pvpY, 760, 58, { t: 'MARTIAL ARENA', glow: true, gc: C.secondary });
-  R.txt(ctx, '⚔️ Challenge a fellow cultivator near your realm', bx + 12, pvpY + 28, { s: 13, c: C.text });
-  R.txt(ctx, `⚡${ECO.pvpCost} stamina | Win gold, XP, honor`, bx + 12, pvpY + 44, { s: 11, c: C.staminaBar });
   // HP
-  const hpY = pvpY + 68;
+  const hpY = by + 168;
   R.panel(ctx, bx, hpY, 760, 34);
   R.txt(ctx, `HP: ${p.hp}/${p.max_hp}`, bx + 12, hpY + 10, { s: 12, b: true, c: C.hpBar });
   R.bar(ctx, bx + 160, hpY + 10, 400, 11, p.hp / p.max_hp, C.hpBar);

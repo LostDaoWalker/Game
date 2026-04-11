@@ -33,7 +33,6 @@ export function renderHome(player, equipped, skills, log, lb, tierBadge) {
   }
   ey += 8; R.divider(ctx, bx + 264, ey, 224); ey += 10;
   R.txt(ctx, `W/L: ${player.wins}/${player.losses}`, bx + 264, ey, { s: 11, c: C.text });
-  R.txt(ctx, `PVP: ${player.pvp_wins}/${player.pvp_losses}`, bx + 380, ey, { s: 11, c: C.secondary });
   ey += 16; R.txt(ctx, `👑 Raids: ${player.raids_completed}`, bx + 264, ey, { s: 11, c: C.legendary });
 
   // Log

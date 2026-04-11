@@ -68,17 +68,11 @@ const SK = [
   ['berserker_rage','Inner Demon','😤','offensive','1.5x dmg below 30% HP',{lowHpDmgMult:1.5},3],
   ['double_strike','Twin Strike','⚔️','offensive','20% chance to hit twice',{doubleStrikeChance:.2},3],
   ['critical_eye','Qi Focus','🎯','offensive','+15% crit, 2x crit dmg',{critChance:.15,critMult:2},3],
-  ['armor_break','Sundering Palm','💥','offensive','Ignore 25% foe defense',{armorPen:.25},3],
-  ['poison_strike','Poison Qi','🧪','offensive','15% damage over time, 3 turns',{poisonChance:.15,poisonDmg:.1},3],
   ['iron_wall','Iron Body','🧱','defensive','Reduce incoming dmg 10%',{dmgReduction:.1},3],
   ['regeneration','Qi Regeneration','💚','defensive','Heal 5% max HP/turn',{regenPercent:.05},3],
   ['dodge_master','Phantom Step','💨','defensive','12% full dodge chance',{dodgeChance:.12},3],
-  ['counter_attack','Reflecting Palm','🔄','defensive','20% counter when hit',{counterChance:.2},3],
-  ['last_stand','Immortal Will','🛡️','defensive','Survive lethal blow once',{lastStand:true},1],
   ['gold_digger','Fortune\'s Blessing','💰','utility','+20% gold from all sources',{goldBonus:.2},3],
   ['quick_learner','Enlightenment','📖','utility','+15% XP from all sources',{xpBonus:.15},3],
-  ['lucky_looter','Heavenly Luck','🍀','utility','Better loot rarity',{lootBonus:1},3],
-  ['intimidate','Killing Intent','👊','utility','Foe starts with -10% ATK',{enemyAtkReduction:.1},3],
 ];
 export const SKILLS = Object.fromEntries(SK.map(([id,name,icon,type,description,effect,maxLevel]) =>
   [id, Object.freeze({ name, icon, type, description, effect: Object.freeze(effect), maxLevel })]));
@@ -170,26 +164,11 @@ const CR = [
 export const CREW = Object.fromEntries(CR.map(([id,name,icon,cost,bonusType,bonusValue,minLevel]) =>
   [id, Object.freeze({ name, icon, cost, bonusType, bonusValue, minLevel })]));
 
-// ── Gear Sets ──
-export const GEAR_SETS = Object.freeze({
-  street: { name: 'Disciple Set', items: ['pipe_wrench','hoodie','snapback','beat_up_nikes','lucky_penny'], bonus: { attack: 5 }, icon: '🏘️' },
-  working: { name: 'Spirit Warrior Set', items: ['tire_iron','kevlar_vest','hard_hat','work_boots','silver_chain'], bonus: { defense: 10, hp: 20 }, icon: '⚔️' },
-  executive: { name: 'Celestial Set', items: ['carbon_blade','tailored_suit','tactical_helmet','designer_sneakers','gold_watch'], bonus: { attack: 15, speed: 10 }, icon: '✨' },
-  elite: { name: 'Dragon Lord Set', items: ['custom_45','armored_overcoat','gold_crown','carbon_runners','diamond_ring'], bonus: { attack: 25, defense: 20, hp: 50 }, icon: '🐉' },
-  black: { name: 'Heavenly Mandate Set', items: ['black_card','black_label_suit','diamond_crown','carbon_runners','black_amex'], bonus: { attack: 40, defense: 30, speed: 20, strength: 20 }, icon: '🌟' },
-});
-
-// ── Bank — protects gold from duels ──
-export const BANK = Object.freeze({
-  depositFee: 0.05,
-  pvpBonusPercent: 0.10, // winner earns 10% of opponent's unbanked gold as bonus
-});
-
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 
 export const ECO = Object.freeze({
   startGold: 100, maxStamina: 10, staminaRegen: 300,
-  pvpCost: 2, healPerHp: 1, sellMult: 0.4,
+  healPerHp: 1, sellMult: 0.4,
   networth: Object.freeze({ gold: 1, equip: 1.5, level: 100 }),
 });
 
@@ -301,31 +280,3 @@ export const FRAME_TIERS = Object.freeze([
   { min: 10000000, color: '#fb923c', label: 'Celestial Emperor' },
 ]);
 
-// ── Milestones — trigger once, never again ──
-export const MILESTONES = Object.freeze([
-  { id: 'first_blood', check: p => p.wins >= 1, msg: '🏅 First Victory — Won your first battle!' },
-  { id: 'win_10', check: p => p.wins >= 10, msg: '🏅 Initiate — 10 victories' },
-  { id: 'win_100', check: p => p.wins >= 100, msg: '🏆 Inner Disciple — 100 victories' },
-  { id: 'win_500', check: p => p.wins >= 500, msg: '👑 Dao Master — 500 victories' },
-  { id: 'lv5', check: p => p.level >= 5, msg: '⭐ Qi Condensation — Level 5' },
-  { id: 'lv10', check: p => p.level >= 10, msg: '⭐⭐ Foundation Establishment — Level 10' },
-  { id: 'lv20', check: p => p.level >= 20, msg: '⭐⭐⭐ Golden Core Formation — Level 20' },
-  { id: 'gold_1k', check: p => p.gold + p.banked_gold >= 1000, msg: '💰 First Thousand — 1,000g total' },
-  { id: 'gold_10k', check: p => p.gold + p.banked_gold >= 10000, msg: '💰💰 Wealthy Cultivator — 10,000g total' },
-  { id: 'net_10k', check: p => p.networth >= 10000, msg: '📈 Rising Cultivator — 10K networth' },
-  { id: 'net_100k', check: p => p.networth >= 100000, msg: '📈📈 Sect Master — 100K networth' },
-  { id: 'net_1m', check: p => p.networth >= 1000000, msg: '📈📈📈 Immortal Ascension — 1M networth' },
-  { id: 'streak_10', check: p => p.best_streak >= 10, msg: '🔥 Dao Heart Ablaze — 10 win streak' },
-  { id: 'streak_25', check: p => p.best_streak >= 25, msg: '🔥🔥 Heavenly Momentum — 25 win streak' },
-  { id: 'pvp_1', check: p => p.pvp_wins >= 1, msg: '🥊 Martial Challenger — First duel won' },
-  { id: 'raid_1', check: p => p.raids_completed >= 1, msg: '👑 Tribulation Survived — First boss clear' },
-]);
-
-// ── Streak multiplier tiers ──
-export const STREAK_TIERS = Object.freeze([
-  { min: 0, mult: 1.0, label: '' },
-  { min: 5, mult: 1.1, label: '🔥' },
-  { min: 10, mult: 1.25, label: '🔥🔥' },
-  { min: 20, mult: 1.5, label: '🔥🔥🔥' },
-  { min: 50, mult: 2.0, label: '💎🔥' },
-]);

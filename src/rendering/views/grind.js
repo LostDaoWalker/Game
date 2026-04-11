@@ -34,8 +34,6 @@ export function renderGrind(player, result) {
   R.txt(ctx, `${result.wins}W/${result.losses}L`, pad, cy, { s: 12, c: result.losses === 0 ? C.success : C.text });
   R.txt(ctx, `+${R.fmt(result.goldEarned)}g`, pad + 80, cy, { s: 12, c: C.gold });
   R.txt(ctx, `+${R.fmt(result.xpEarned)}xp`, pad + 160, cy, { s: 12, c: C.xpBar });
-  if (result.streakMult > 1) R.txt(ctx, `${result.streakMult}x`, GW - pad, cy, { s: 12, b: true, c: C.accent, a: 'right' });
-
   cy += 22;
 
   // Level up
@@ -47,13 +45,6 @@ export function renderGrind(player, result) {
     R.txt(ctx, `${pre}${item.icon} ${item.name}`, pad, cy, { s: 11, c: R.rarityColor(item.rarity) });
     cy += 16;
   }
-
-  // Streak
-  if (result.streak >= 5) { R.txt(ctx, `${result.streakLabel} ${result.streak} streak`, pad, cy, { s: 12, b: true, c: C.accent }); cy += 18; }
-  else if (result.losses > 0 && result.streak === 0) { R.txt(ctx, '💔 Streak broken', pad, cy, { s: 11, c: C.danger }); cy += 18; }
-
-  // Milestones
-  for (const m of result.milestones.slice(0, 2)) { R.txt(ctx, m.msg, pad, cy, { s: 10, b: true, c: C.accent }); cy += 16; }
 
   // XP bar at bottom
   const barY = GH - 40;
