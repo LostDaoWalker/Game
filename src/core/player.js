@@ -40,20 +40,6 @@ export function getOrCreatePlayer(id, username) {
   return getPlayer(id);
 }
 
-// Daily bonus: escalating gold for consecutive days, resets on miss
-const DAILY_REWARDS = [50, 100, 150, 250, 400, 600, 1000];
-
-export function claimDaily(playerId) {
-  const player = getPlayer(playerId);
-  const today = Date.now() / 86400000 | 0; // days since epoch
-  const lastDay = player.last_daily;
-  if (lastDay === today) return { success: false, error: 'Already claimed today' };
-  const streak = (lastDay === today - 1) ? Math.min(player.daily_streak + 1, DAILY_REWARDS.length - 1) : 0;
-  const reward = DAILY_REWARDS[streak];
-  upd(playerId, { gold: floorZero(player.gold + reward), daily_streak: streak, last_daily: today });
-  return { success: true, gold: reward, streak: streak + 1, maxStreak: DAILY_REWARDS.length };
-}
-
 // ── Stamina ──
 
 export function regenStamina(playerId) {
@@ -363,16 +349,7 @@ function rollLoot(playerLevel) {
   return candidates.length ? candidates[randBetween(0, candidates.length - 1)][0] : null;
 }
 
-// ── Healing / Networth ──
-
-export function healPlayer(playerId) {
-  const player = getPlayer(playerId);
-  if (player.hp >= player.max_hp) return { success: false, error: 'Full HP' };
-  const cost = (player.max_hp - player.hp) * ECO.healPerHp | 0;
-  if (player.gold < cost) return { success: false, error: `Need ${cost}g` };
-  upd(playerId, { gold: floorZero(player.gold - cost), hp: player.max_hp });
-  return { success: true, cost, healed: player.max_hp - player.hp };
-}
+// ── Networth ──
 
 export function updateNetworth(playerId) {
   const player = getPlayer(playerId);
@@ -483,11 +460,9 @@ export function grind(playerId) {
     if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
   }
 
+  // Auto-heal to full after combat
   const afterFight = getPlayer(playerId);
-  if (afterFight.hp < afterFight.max_hp * 0.5) {
-    const heal = healPlayer(playerId);
-    if (heal.success) result.healed = true;
-  }
+  if (afterFight.hp < afterFight.max_hp) upd(playerId, { hp: afterFight.max_hp });
 
   const junk = sellAllJunk(playerId, 'common');
   if (junk.success) { result.junkGold = junk.gold; result.junkCount = junk.count; }

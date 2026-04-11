@@ -21,7 +21,6 @@ export const RARITIES = {
 
 export const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '👒', boots: '👟', accessory: '💍' };
 export const EQUIPMENT_SLOTS = Object.keys(SLOT_ICONS);
-export const TABS = ['HOME', 'FIGHT', 'INVENTORY', 'PROFILE'];
 
 // ── Equipment ──
 // [id, name, slot, rarity, icon, stats, sellValue, dropLevel]
@@ -121,8 +120,7 @@ export const ZONES = Object.freeze({
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 
 export const ECO = Object.freeze({
-  startGold: 100, maxStamina: 10, staminaRegen: 300,
-  healPerHp: 1, sellMult: 0.4,
+  startGold: 100, maxStamina: 10, staminaRegen: 300, sellMult: 0.4,
   networth: Object.freeze({ gold: 1, equip: 1.5, level: 100 }),
 });
 

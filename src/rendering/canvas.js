@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { THEME, CANVAS, RARITIES, TABS } from '../core/config.js';
+import { THEME, CANVAS, RARITIES } from '../core/config.js';
 const C = THEME.colors, W = CANVAS.width, H = CANVAS.height;
 export { C as colors };
 
@@ -142,8 +142,6 @@ export function layout(player, tab, opts = {}) {
     txt(ctx, `${s.l} ${s.v}`, rx, 16, { s: 13, b: true, c: s.c, a: 'right' }); rx -= 120;
   }
   divider(ctx, 20, 38, 760);
-  panel(ctx, 20, 400, 760, 40);
-  for (let i = 0; i < TABS.length; i++) btn(ctx, 28 + i * 123, 405, 118, 28, TABS[i], C.primary, TABS[i] === tab.toUpperCase());
   txt(ctx, `${THEME.name} — ${THEME.tagline}`, 20, 458, { s: 9, c: C.textMuted });
   return { canvas, ctx, bx: 20, by: 46 };
 }
