@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { RAIDS, SKILLS, EQUIPMENT, ANCESTORS } from '../core/config.js';
+import { SKILLS, EQUIPMENT, ANCESTORS } from '../core/config.js';
 import { renderGrind } from '../rendering/views/grind.js';
 
 function renderView(playerId, extra) {
@@ -22,13 +22,7 @@ function executeAction(playerId, action, args = {}) {
       if (!result.wins && !result.losses) msg = '⏸️ Out of stamina';
       return { success: true, message: msg, extra: result };
     },
-    raid: () => {
-      const r = Player.fightRaid(playerId, args.raidId);
-      if (!r.success) return r;
-      return { success: true, message: r.won ? `⚔️ Beat ${r.foe.name}! +${r.gold}g +${r.xp}xp` : `💀 Lost to ${r.foe.name}`, extra: r };
-    },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}` } : r; },
-    sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g` } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}` } : r; },
     set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}` } : r; },
   };
@@ -67,7 +61,6 @@ export async function handleSelectMenu(interaction) {
   const val = interaction.values[0];
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
   const map = {
-    raid_select: ['raid', { raidId: val }],
     equip: ['equip', { itemRowId: +val }],
     pick_skill: ['pick_skill', { skillId: val }],
     avatar_select: ['set_avatar', { avatarId: val }],
@@ -87,16 +80,8 @@ function buildUI(playerId) {
   const player = Player.getPlayer(playerId);
   const rows = [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('sell_junk').setLabel('🗑️ Sell Junk').setStyle(ButtonStyle.Secondary)),
+      new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success)),
   ];
-
-  // Raid bosses
-  if (player) {
-    const raidable = Object.entries(RAIDS).filter(([, r]) => player.level >= r.minLevel);
-    if (raidable.length) rows.push(selectMenu('raid_select', '👑 Challenge boss...',
-      raidable.map(([id, r]) => ({ label: `${r.icon} ${r.name}`, description: `⚡${r.staminaCost} | ❤${r.hp}`, value: id }))));
-  }
 
   // Equip items
   if (player) {

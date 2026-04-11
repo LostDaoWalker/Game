@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -321,19 +321,6 @@ export function fightEnemy(playerId, enemyId) {
     stats: { hp: config.baseHp * scaleFactor | 0, max_hp: config.baseHp * scaleFactor | 0, attack: config.baseAtk * scaleFactor | 0, defense: config.baseDef * scaleFactor | 0, speed: config.baseSpd * scaleFactor | 0, strength: 0 },
     xpRange: config.xp, goldRange: config.gold,
   }, 'pve', rollLoot);
-}
-
-export function fightRaid(playerId, raidId) {
-  const player = getPlayer(playerId), config = RAIDS[raidId];
-  if (!config) return { success: false, error: 'Unknown raid' };
-  if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
-  return executeCombat(playerId, {
-    name: config.name, cost: config.staminaCost,
-    stats: { hp: config.hp, max_hp: config.hp, attack: config.atk, defense: config.def, speed: config.spd, strength: 0 },
-    xpRange: config.xp, goldRange: config.gold,
-  }, 'raid', () => {
-    return Math.random() < config.lootChance ? config.lootTable[randBetween(0, config.lootTable.length - 1)] : null;
-  });
 }
 
 // ── Loot ──

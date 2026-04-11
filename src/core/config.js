@@ -99,16 +99,6 @@ const EN = [
 export const ENEMIES = Object.fromEntries(EN.map(([id,name,icon,zone,baseHp,baseAtk,baseDef,baseSpd,scaling,xp,gold,minLevel]) =>
   [id, Object.freeze({ name, icon, zone, baseHp, baseAtk, baseDef, baseSpd, scaling, xp, gold, minLevel })]));
 
-// ── Bosses ──
-// [id, name, icon, desc, hp, atk, def, spd, minLevel, staminaCost, xpRange, goldRange, lootTable, lootChance]
-const RD = [
-  ['local_champ','Sect Elder','👑🥋','Master of the outer disciples',500,20,15,6,5,3,[100,200],[150,300],['tire_iron','kevlar_vest','hard_hat','work_boots'],.5],
-  ['district_lead','Demon Lord','⚔️👹','Rules the misty forest domain',1200,35,25,9,10,5,[250,500],[400,700],['switchblade','tailored_suit','tactical_helmet','designer_sneakers','silver_chain'],.4],
-  ['vp_ops','Celestial Warden','🏯⚡','Guardian of the Sacred Peak',2500,55,40,5,15,7,[500,900],[800,1500],['custom_45','armored_overcoat','gold_crown','carbon_runners','diamond_ring'],.35],
-  ['the_ceo','Jade Emperor','💎🔥','Ruler of the Heavens. For now.',5000,80,55,12,20,10,[1000,2000],[2000,4000],['black_card','black_label_suit','diamond_crown','black_amex','obsidian_edge'],.25],
-];
-export const RAIDS = Object.fromEntries(RD.map(([id,name,icon,description,hp,atk,def,spd,minLevel,staminaCost,xp,gold,lootTable,lootChance]) =>
-  [id, Object.freeze({ name, icon, description, hp, atk, def, spd, minLevel, staminaCost, xp, gold, lootTable: Object.freeze(lootTable), lootChance })]));
 
 export const ZONES = Object.freeze({
   neighborhood: { name: 'Mortal Village',     icon: '🏘️', minLevel: 1,  staminaCost: 1 },
