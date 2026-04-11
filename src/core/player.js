@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -205,15 +205,14 @@ export function getAncestorBoons(player) {
 
 function getEffectiveStats(playerId) {
   const player = getPlayer(playerId), bonuses = getEquipmentBonuses(playerId);
-  const crewBonus = getCrewBonuses(playerId);
   const traitBonus = getTraitBonuses(player);
   const ancestorBonus = getAncestorBoons(player);
   return {
     hp: player.hp, max_hp: player.max_hp + bonuses.hp + traitBonus.hp + ancestorBonus.hp,
-    attack: player.attack + bonuses.attack + (crewBonus.attack || 0) + traitBonus.attack + ancestorBonus.attack,
-    defense: player.defense + bonuses.defense + (crewBonus.defense || 0) + traitBonus.defense + ancestorBonus.defense,
-    speed: player.speed + bonuses.speed + (crewBonus.speed || 0) + traitBonus.speed + ancestorBonus.speed,
-    strength: player.strength + bonuses.strength + (crewBonus.strength || 0) + traitBonus.strength + ancestorBonus.strength,
+    attack: player.attack + bonuses.attack + traitBonus.attack + ancestorBonus.attack,
+    defense: player.defense + bonuses.defense + traitBonus.defense + ancestorBonus.defense,
+    speed: player.speed + bonuses.speed + traitBonus.speed + ancestorBonus.speed,
+    strength: player.strength + bonuses.strength + traitBonus.strength + ancestorBonus.strength,
   };
 }
 
@@ -299,8 +298,7 @@ function executeCombat(playerId, foe, combatType, lootFn) {
   const result = simulate(stats, foe.stats, skillLevels, foe.skills || {});
   const won = result.winner === 'attacker';
   const goldSkillBonus = readLevel(skillLevels, 'gold_digger');
-  const crewGoldBonus = getCrewBonuses(playerId).goldBonus || 0;
-  const goldMultiplier = 1 + (goldSkillBonus ? goldSkillBonus * .2 : 0) + crewGoldBonus / 100;
+  const goldMultiplier = 1 + (goldSkillBonus ? goldSkillBonus * .2 : 0);
   const earnedXp = won ? randBetween(...foe.xpRange) : randBetween(...foe.xpRange) * .25 | 0;
   const earnedGold = won ? (randBetween(...foe.goldRange) * goldMultiplier | 0) : 0;
   const lootDrop = won && lootFn ? lootFn(player.level) : null;
@@ -365,49 +363,6 @@ function rollLoot(playerLevel) {
   return candidates.length ? candidates[randBetween(0, candidates.length - 1)][0] : null;
 }
 
-// ── Assets ──
-
-export const getPlayerAssets = playerId => sql('SELECT * FROM assets WHERE player_id=?').all(playerId);
-
-export function buyAsset(playerId, assetId) {
-  const config = ASSETS[assetId];
-  if (!config) return { success: false, error: 'Unknown asset' };
-  const player = getPlayer(playerId);
-  if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
-  const existing = sql('SELECT id FROM assets WHERE player_id=? AND asset_id=?').get(playerId, assetId);
-  if (existing) return { success: false, error: 'Already owned' };
-  if (player.gold < config.cost) return { success: false, error: `Need ${config.cost}g` };
-  return tx(() => {
-    upd(playerId, { gold: floorZero(player.gold - config.cost) });
-    sql('INSERT INTO assets(player_id,asset_id) VALUES(?,?)').run(playerId, assetId);
-    return { success: true, asset: config };
-  });
-}
-
-export function collectAssetIncome(playerId) {
-  const now = Date.now() / 1000 | 0;
-  const owned = getPlayerAssets(playerId);
-  if (!owned.length) return { success: false, error: 'No assets' };
-  return tx(() => {
-    let totalIncome = 0, totalMaintenance = 0;
-    for (const row of owned) {
-      const config = ASSETS[row.asset_id];
-      if (!config) continue;
-      const hoursElapsed = Math.min(24, (now - row.last_collected) / 3600);  // cap at 24h — no AFK snowball
-      if (hoursElapsed < 0.01) continue;
-      totalIncome += (config.incomePerHr * hoursElapsed) | 0;
-      totalMaintenance += (config.maintenancePerHr * hoursElapsed) | 0;
-      sql('UPDATE assets SET last_collected=? WHERE id=?').run(now, row.id);
-    }
-    const netEarnings = floorZero(totalIncome - totalMaintenance);
-    if (netEarnings > 0) {
-      const player = getPlayer(playerId);
-      upd(playerId, { gold: floorZero(player.gold + netEarnings) });
-    }
-    return { success: true, income: totalIncome, maintenance: totalMaintenance, net: netEarnings };
-  });
-}
-
 // ── Healing / Networth ──
 
 export function healPlayer(playerId) {
@@ -423,11 +378,7 @@ export function updateNetworth(playerId) {
   const player = getPlayer(playerId);
   let equipValue = 0;
   for (const row of getAllEquipment(playerId)) equipValue += EQUIPMENT[row.item_id]?.sellValue || 0;
-  let assetValue = 0;
-  for (const row of getPlayerAssets(playerId)) assetValue += ASSETS[row.asset_id]?.networthValue || 0;
-  let crewValue = 0;
-  for (const row of getPlayerCrew(playerId)) crewValue += CREW[row.crew_id]?.cost || 0;
-  const networth = floorZero(player.gold + player.banked_gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level + assetValue + crewValue);
+  const networth = floorZero(player.gold + player.banked_gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level);
   upd(playerId, { networth, peak_networth: Math.max(networth, player.peak_networth) });
   return networth;
 }
@@ -503,46 +454,6 @@ export function bulkFight(playerId, enemyId, count) {
   return results;
 }
 
-// Highest tier asset owned — for status display
-export function highestAssetIcon(playerId) {
-  const owned = getPlayerAssets(playerId);
-  if (!owned.length) return null;
-  let best = null, bestCost = 0;
-  for (const row of owned) {
-    const config = ASSETS[row.asset_id];
-    if (config && config.cost > bestCost) { best = config; bestCost = config.cost; }
-  }
-  return best?.icon || null;
-}
-
-// ── Crew — hired companions give passive bonuses ──
-
-export const getPlayerCrew = playerId => sql('SELECT * FROM crew WHERE player_id=?').all(playerId);
-
-export function hireCrew(playerId, crewId) {
-  const config = CREW[crewId];
-  if (!config) return { success: false, error: 'Unknown crew member' };
-  const player = getPlayer(playerId);
-  if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
-  const existing = sql('SELECT id FROM crew WHERE player_id=? AND crew_id=?').get(playerId, crewId);
-  if (existing) return { success: false, error: 'Already hired' };
-  if (player.gold < config.cost) return { success: false, error: `Need ${config.cost}g` };
-  return tx(() => {
-    upd(playerId, { gold: floorZero(player.gold - config.cost) });
-    sql('INSERT INTO crew(player_id,crew_id) VALUES(?,?)').run(playerId, crewId);
-    return { success: true, crew: config };
-  });
-}
-
-export function getCrewBonuses(playerId) {
-  const bonuses = { attack: 0, defense: 0, speed: 0, strength: 0, goldBonus: 0 };
-  for (const row of getPlayerCrew(playerId)) {
-    const config = CREW[row.crew_id];
-    if (config && config.bonusType in bonuses) bonuses[config.bonusType] += config.bonusValue;
-  }
-  return bonuses;
-}
-
 // ── Ancestor (patron worship) ──
 
 export function setAncestor(playerId, ancestorId) {
@@ -560,7 +471,6 @@ export function setAvatar(playerId, avatarId) {
 
 export function grind(playerId) {
   regenStamina(playerId);
-  collectAssetIncome(playerId);
   const before = getPlayer(playerId);
   const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, healed: false, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
 

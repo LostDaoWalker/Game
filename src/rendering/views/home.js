@@ -2,10 +2,10 @@ import { SLOT_ICONS, getRealm } from '../../core/config.js';
 import * as R from '../canvas.js';
 const C = R.colors;
 
-export function renderHome(player, equipped, skills, log, lb, tierBadge) {
+export function renderHome(player, equipped, skills, log, lb) {
   const realm = getRealm(player.level);
   const { canvas, ctx, bx, by } = R.layout(player, 'home', {
-    sub: `// ${realm.icon} ${realm.name}${tierBadge ? ' ' + tierBadge : ''}`,
+    sub: `// ${realm.icon} ${realm.name}`,
     stats: [{ l: 'LVL', v: `${player.level}`, c: C.secondary }, { l: 'NET', v: `${R.fmt(player.networth)}g`, c: C.gold }],
   });
 

@@ -21,7 +21,7 @@ export const RARITIES = {
 
 export const SLOT_ICONS = { weapon: '⚔️', armor: '🛡️', helmet: '👒', boots: '👟', accessory: '💍' };
 export const EQUIPMENT_SLOTS = Object.keys(SLOT_ICONS);
-export const TABS = ['HOME', 'FIGHT', 'ASSETS', 'INVENTORY', 'PROFILE'];
+export const TABS = ['HOME', 'FIGHT', 'INVENTORY', 'PROFILE'];
 
 // ── Equipment ──
 // [id, name, slot, rarity, icon, stats, sellValue, dropLevel]
@@ -117,52 +117,6 @@ export const ZONES = Object.freeze({
   business:     { name: 'Sacred Peak',        icon: '⛰️', minLevel: 10, staminaCost: 3 },
   topfloor:     { name: 'Celestial Palace',   icon: '🏯', minLevel: 16, staminaCost: 4 },
 });
-
-// ── Assets — networth progression ──
-// [id, name, icon, tier, cost, incomePerHr, maintenancePerHr, networthValue, minLevel]
-const AS = [
-  // Mortal
-  ['lemonade_stand','Herb Garden','🌿','starter',200,12,2,300,1],
-  ['corner_store','Spirit Stone Mine','💎','starter',500,25,5,750,2],
-  ['food_truck','Alchemy Workshop','⚗️','starter',1200,50,12,1800,4],
-  // Spirit
-  ['barbershop','Talisman Forge','🔮','growth',3000,90,25,4500,6],
-  ['laundromat','Spirit Beast Stable','🐎','growth',6000,150,50,9000,8],
-  ['auto_shop','Cultivation Cave','🏔️','growth',12000,250,90,18000,10],
-  // Celestial
-  ['nightclub','Celestial Pavilion','🏯','premium',30000,400,160,50000,13],
-  ['restaurant','Pill Refinery','🧪','premium',60000,650,280,100000,15],
-  ['apartment_bldg','Sect Hall','🏛️','premium',120000,1000,450,200000,18],
-  // Immortal
-  ['penthouse','Immortal\'s Abode','☁️','luxury',300000,500,400,600000,20],
-  ['supercar','Flying Sword Fleet','⚔️','luxury',500000,200,180,1000000,22],
-  ['yacht','Floating Palace','🌙','luxury',1000000,100,90,2000000,25],
-];
-export const ASSETS = Object.fromEntries(AS.map(([id,name,icon,tier,cost,incomePerHr,maintenancePerHr,networthValue,minLevel]) =>
-  [id, Object.freeze({ name, icon, tier, cost, incomePerHr, maintenancePerHr, networthValue, minLevel })]));
-
-export const ASSET_TIERS = Object.freeze({
-  starter: { name: 'Mortal',    color: '#a1a1aa' },
-  growth:  { name: 'Spirit',    color: '#4ade80' },
-  premium: { name: 'Celestial', color: '#38bdf8' },
-  luxury:  { name: 'Immortal',  color: '#f5c542' },
-});
-
-// ── Crew (associates) — passive bonuses ──
-// [id, name, icon, cost, bonus_type, bonus_value, minLevel]
-const CR = [
-  ['scout','Spirit Hawk','🦅',300,'speed',3,2],
-  ['coach','Martial Elder','💪',800,'attack',5,5],
-  ['accountant','Treasury Keeper','📊',1500,'goldBonus',10,8],
-  ['guard','Formation Master','🛡️',3000,'defense',8,10],
-  ['trainer','Body Tempering Master','🏋️',5000,'strength',6,12],
-  ['analyst','Divination Master','🔮',10000,'speed',12,15],
-  ['strategist','Array Master','📐',20000,'attack',15,18],
-  ['advisor','Grand Elder','⚖️',50000,'defense',20,22],
-  ['partner','Dao Companion','🌙',100000,'strength',15,25],
-];
-export const CREW = Object.fromEntries(CR.map(([id,name,icon,cost,bonusType,bonusValue,minLevel]) =>
-  [id, Object.freeze({ name, icon, cost, bonusType, bonusValue, minLevel })]));
 
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 

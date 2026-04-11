@@ -1,13 +1,13 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, AVATARS, ANCESTORS, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, AVATARS, ANCESTORS, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
 import { renderInventory } from '../rendering/views/inventory.js';
 import { renderSkills } from '../rendering/views/skills.js';
 import { renderProfile } from '../rendering/views/profile.js';
-import { renderAssets } from '../rendering/views/assets.js';
+
 import { renderGrind } from '../rendering/views/grind.js';
 
 const activeView = new Map();
@@ -21,7 +21,6 @@ const skillConfigs = playerId => Player.getPlayerSkills(playerId)
 // Runs housekeeping + fetches fresh player — used by all views except grind (which does its own)
 function freshPlayer(playerId) {
   Player.regenStamina(playerId);
-  Player.collectAssetIncome(playerId);
   Player.updateNetworth(playerId);
   return Player.getPlayer(playerId);
 }
@@ -34,10 +33,9 @@ function renderView(playerId, view, extra) {
   if (!player) return null;
 
   const renderers = {
-    home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard(), Player.highestAssetIcon(playerId)),
+    home: () => renderHome(player, equippedConfigs(playerId), skillConfigs(playerId), Player.getRecentLog(playerId), Player.getLeaderboard()),
     fight: () => renderFight(player, extra),
     raids: () => renderRaids(player, extra),
-    assets: () => renderAssets(player, Player.getPlayerAssets(playerId)),
     inventory: () => renderInventory(player, Player.getAllEquipment(playerId), Player.getEquippedItems(playerId)),
     skills: () => renderSkills(player, skillConfigs(playerId), Player.getSkillOffers(playerId)),
     profile: () => renderProfile(player, Player.getAllEquipment(playerId), skillConfigs(playerId), Player.getRank(playerId)),
@@ -73,8 +71,6 @@ function executeAction(playerId, action, args = {}) {
     fight_enemy: () => { lastEnemy.set(playerId, args.enemyId); return formatCombatResult(Player.fightEnemy(playerId, args.enemyId), 'fight'); },
     raid: () => formatCombatResult(Player.fightRaid(playerId, args.raidId), 'raids'),
     heal: () => { const r = Player.healPlayer(playerId); return r.success ? { success: true, message: `❤️ Healed ${r.healed} HP (-${r.cost}g)`, view: null } : r; },
-    buy_asset: () => { const r = Player.buyAsset(playerId, args.assetId); return r.success ? { success: true, message: `Bought ${r.asset.icon} ${r.asset.name}!`, view: 'assets' } : r; },
-    hire_crew: () => { const r = Player.hireCrew(playerId, args.crewId); return r.success ? { success: true, message: `Hired ${r.crew.icon} ${r.crew.name}!`, view: 'home' } : r; },
     daily: () => { const r = Player.claimDaily(playerId); return r.success ? { success: true, message: `🎁 +${r.gold}g (streak ${r.streak}/${r.maxStreak})`, view: null } : r; },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}`, view: 'inventory' } : r; },
     sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
@@ -130,11 +126,10 @@ export async function handleSelectMenu(interaction) {
   const map = {
     fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }],
     equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }],
-    buy_asset: ['buy_asset', { assetId: val }], hire_crew: ['hire_crew', { crewId: val }],
     avatar_select: ['set_avatar', { avatarId: val }],
   };
   const [action, args] = map[menuId] || ['unknown', {}];
-  const fallback = { equip: 'inventory', pick_skill: 'skills', buy_asset: 'assets', hire_crew: 'home', avatar_select: 'profile' }[menuId];
+  const fallback = { equip: 'inventory', pick_skill: 'skills', avatar_select: 'profile' }[menuId];
   return sendResult(interaction, playerId, executeAction(playerId, action, args), fallback);
 }
 
@@ -162,12 +157,6 @@ function buildUI(view, playerId) {
   if (view === 'raids' && player) rows.push(selectMenu('raid_select', 'Choose boss...',
     Object.entries(RAIDS).filter(([, r]) => player.level >= r.minLevel).map(([id, r]) => ({
       label: `${r.icon} ${r.name}`, description: `⚡${r.staminaCost} | ❤${r.hp}`, value: id }))));
-  if (view === 'assets' && player) {
-    const owned = new Set(Player.getPlayerAssets(playerId).map(r => r.asset_id));
-    const buyable = Object.entries(ASSETS).filter(([id, a]) => !owned.has(id) && player.level >= a.minLevel);
-    if (buyable.length) rows.push(selectMenu('buy_asset', '🏠 Buy asset...',
-      buyable.map(([id, a]) => ({ label: `${a.icon} ${a.name} (${a.cost}g)`, description: `+${a.incomePerHr}/hr | +${a.networthValue} net`, value: id }))));
-  }
   if (view === 'inventory' && player) {
     const unequipped = Player.getAllEquipment(playerId).filter(r => !r.equipped);
     if (unequipped.length) {
@@ -176,12 +165,6 @@ function buildUI(view, playerId) {
       rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('sell_junk').setLabel('Sell Junk').setStyle(ButtonStyle.Secondary)));
     }
-  }
-  if (view === 'home' && player) {
-    const hired = new Set(Player.getPlayerCrew(playerId).map(r => r.crew_id));
-    const hireable = Object.entries(CREW).filter(([id, c]) => !hired.has(id) && player.level >= c.minLevel);
-    if (hireable.length) rows.push(selectMenu('hire_crew', '🧘 Recruit companion...',
-      hireable.map(([id, c]) => ({ label: `${c.icon} ${c.name} (${c.cost}g)`, description: `+${c.bonusValue} ${c.bonusType}`, value: id }))));
   }
   if (view === 'profile' && player) {
     rows.push(selectMenu('avatar_select', '🙏 Choose ancestor...',
