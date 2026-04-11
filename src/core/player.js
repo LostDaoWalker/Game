@@ -431,12 +431,12 @@ export function setAvatar(playerId, avatarId) {
   return setAncestor(playerId, avatarId);
 }
 
-// ── GRIND — core loop: fight, heal, sell junk ──
+// ── GRIND — core loop: fight, sell junk ──
 
 export function grind(playerId) {
   regenStamina(playerId);
   const before = getPlayer(playerId);
-  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, healed: false, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
 
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
