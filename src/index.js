@@ -8,11 +8,11 @@ if (!TOKEN) { console.error('Missing DISCORD_TOKEN'); process.exit(1); }
 getDb();
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-client.once(Events.ClientReady, c => console.log(`☀ HALCYON online as ${c.user.tag} (${c.guilds.cache.size} guilds)`));
+client.once(Events.ClientReady, c => console.log(`🌟 TIANMING online as ${c.user.tag} (${c.guilds.cache.size} guilds)`));
 
 client.on(Events.InteractionCreate, async i => {
   try {
-    if (i.isChatInputCommand() && i.commandName === 'halcyon') return handleCommand(i);
+    if (i.isChatInputCommand() && i.commandName === 'tianming') return handleCommand(i);
     if (i.isButton()) return handleButton(i);
     if (i.isStringSelectMenu()) return handleSelectMenu(i);
   } catch (e) {

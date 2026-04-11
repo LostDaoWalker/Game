@@ -1,10 +1,11 @@
-import { SLOT_ICONS } from '../../core/config.js';
+import { SLOT_ICONS, getRealm } from '../../core/config.js';
 import * as R from '../canvas.js';
 const C = R.colors;
 
 export function renderHome(player, equipped, skills, log, lb, tierBadge) {
+  const realm = getRealm(player.level);
   const { canvas, ctx, bx, by } = R.layout(player, 'home', {
-    sub: `// ${player.username}${tierBadge ? ' ' + tierBadge : ''}`,
+    sub: `// ${realm.icon} ${realm.name}${tierBadge ? ' ' + tierBadge : ''}`,
     stats: [{ l: 'LVL', v: `${player.level}`, c: C.secondary }, { l: 'NET', v: `${R.fmt(player.networth)}g`, c: C.gold }],
   });
 
@@ -36,7 +37,7 @@ export function renderHome(player, equipped, skills, log, lb, tierBadge) {
   ey += 16; R.txt(ctx, `👑 Raids: ${player.raids_completed}`, bx + 264, ey, { s: 11, c: C.legendary });
 
   // Log
-  R.panel(ctx, bx + 512, by, 248, 200, { t: 'BATTLE LOG' });
+  R.panel(ctx, bx + 512, by, 248, 200, { t: 'COMBAT RECORD' });
   let ly = by + 28;
   if (!log.length) R.txt(ctx, 'No battles yet.', bx + 524, ly, { s: 11, c: C.textMuted });
   else for (const e of log.slice(0, 6)) {
@@ -47,7 +48,7 @@ export function renderHome(player, equipped, skills, log, lb, tierBadge) {
   }
 
   // Leaderboard
-  R.panel(ctx, bx, by + 212, 370, 108, { t: 'TOP FIGHTERS', glow: true, gc: C.accent });
+  R.panel(ctx, bx, by + 212, 370, 108, { t: 'TOP CULTIVATORS', glow: true, gc: C.accent });
   let lby = by + 240;
   for (let i = 0; i < Math.min(4, lb.length); i++) {
     const e = lb[i], me = e.id === player.id;
@@ -59,7 +60,7 @@ export function renderHome(player, equipped, skills, log, lb, tierBadge) {
   // Skills
   R.panel(ctx, bx + 382, by + 212, 378, 108, { t: 'SKILLS' });
   let sky = by + 240;
-  if (!skills.length) R.txt(ctx, 'Level up to unlock skills!', bx + 394, sky, { s: 11, c: C.textMuted });
+  if (!skills.length) R.txt(ctx, 'Advance to unlock cultivation arts!', bx + 394, sky, { s: 11, c: C.textMuted });
   else for (const sk of skills.slice(0, 4)) {
     R.txt(ctx, `${sk.icon} ${sk.name}`, bx + 394, sky, { s: 11, c: C.text });
     R.txt(ctx, `Lv.${sk.level}`, bx + 748, sky, { s: 11, b: true, c: C.secondary, a: 'right' }); sky += 22;

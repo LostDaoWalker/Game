@@ -5,7 +5,7 @@ const TC = { offensive: C.danger, defensive: C.primary, utility: C.accent };
 
 export function renderSkills(player, skills, offers) {
   const { canvas, ctx, bx, by } = R.layout(player, 'skills', {
-    sub: '// SKILL TREE',
+    sub: '// CULTIVATION ARTS',
     stats: [{ l: 'LVL', v: `${player.level}`, c: C.secondary }, { l: '🎯', v: `${player.pending_skill_picks} picks`, c: C.accent }],
   });
 

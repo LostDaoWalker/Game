@@ -32,7 +32,7 @@ export function renderInventory(player, all, equipped) {
     iy += 20;
   }
   if (sorted.length > 14) R.txt(ctx, `+${sorted.length - 14} more...`, bx + 284, iy, { s: 10, c: C.textDim });
-  else if (!sorted.length) R.txt(ctx, 'Fight enemies for loot!', bx + 284, iy, { s: 11, c: C.textMuted });
+  else if (!sorted.length) R.txt(ctx, 'Defeat foes for treasures!', bx + 284, iy, { s: 11, c: C.textMuted });
 
   // Base stats
   R.panel(ctx, bx, by + 200, 260, 146, { t: 'BASE + GEAR' });

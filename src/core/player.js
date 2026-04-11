@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, BANK, MILESTONES, STREAK_TIERS, AVATARS } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RAIDS, RARITIES, ZONES, ASSETS, CREW, GEAR_SETS, BANK, MILESTONES, STREAK_TIERS, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -16,12 +16,27 @@ function shuffle(array) {
 const floorZero = value => Math.max(0, value | 0);
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value | 0));
 
+// ── Weighted random pick — used for bloodlines, physiques, talents ──
+function weightedPick(table) {
+  const entries = Object.entries(table);
+  let total = 0;
+  for (const [, v] of entries) total += v.weight;
+  let roll = Math.random() * total;
+  for (const [id, v] of entries) { roll -= v.weight; if (roll <= 0) return id; }
+  return entries[0][0];
+}
+
 // ── Player CRUD ──
 
 export const getPlayer = id => sql('SELECT * FROM players WHERE id=?').get(id);
 
 export function getOrCreatePlayer(id, username) {
-  sql('INSERT OR IGNORE INTO players(id,username) VALUES(?,?)').run(id, username);
+  const existing = getPlayer(id);
+  if (existing) return existing;
+  const bloodline = weightedPick(BLOODLINES);
+  const physique = weightedPick(PHYSIQUES);
+  const talent = weightedPick(TALENTS);
+  sql('INSERT OR IGNORE INTO players(id,username,bloodline,physique,talent) VALUES(?,?,?,?,?)').run(id, username, bloodline, physique, talent);
   return getPlayer(id);
 }
 
@@ -68,6 +83,7 @@ export function addXp(playerId, amount) {
   if (levelsGained) {
     updates.pending_skill_picks = player.pending_skill_picks + levelsGained;
     updates.stamina = player.max_stamina; // full refill on level-up
+    updates.ancestor_favor = player.ancestor_favor + levelsGained * 10; // ancestor favor on level-up
     generateSkillOffers(playerId);
   }
   upd(playerId, updates);
@@ -169,17 +185,37 @@ export function pickSkill(playerId, skillId) {
 
 // ── Combat ──
 
+function getTraitBonuses(player) {
+  const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+  for (const src of [BLOODLINES[player.bloodline], PHYSIQUES[player.physique], TALENTS[player.talent]]) {
+    if (src?.bonus) for (const s in src.bonus) if (s in b) b[s] += src.bonus[s];
+  }
+  return b;
+}
+
+export function getAncestorBoons(player) {
+  const ancestor = ANCESTORS[player.ancestor];
+  if (!ancestor) return { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+  const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+  for (const boon of ancestor.boons) {
+    if (player.ancestor_favor >= boon.favor) for (const s in boon.bonus) if (s in b) b[s] += boon.bonus[s];
+  }
+  return b;
+}
+
 function getEffectiveStats(playerId) {
   const player = getPlayer(playerId), bonuses = getEquipmentBonuses(playerId);
   const crewBonus = getCrewBonuses(playerId);
   const gearSet = getActiveGearSet(playerId);
   const setBonus = gearSet?.bonus || {};
+  const traitBonus = getTraitBonuses(player);
+  const ancestorBonus = getAncestorBoons(player);
   return {
-    hp: player.hp, max_hp: player.max_hp + bonuses.hp + (setBonus.hp || 0),
-    attack: player.attack + bonuses.attack + (crewBonus.attack || 0) + (setBonus.attack || 0),
-    defense: player.defense + bonuses.defense + (crewBonus.defense || 0) + (setBonus.defense || 0),
-    speed: player.speed + bonuses.speed + (crewBonus.speed || 0) + (setBonus.speed || 0),
-    strength: player.strength + bonuses.strength + (crewBonus.strength || 0) + (setBonus.strength || 0),
+    hp: player.hp, max_hp: player.max_hp + bonuses.hp + (setBonus.hp || 0) + traitBonus.hp + ancestorBonus.hp,
+    attack: player.attack + bonuses.attack + (crewBonus.attack || 0) + (setBonus.attack || 0) + traitBonus.attack + ancestorBonus.attack,
+    defense: player.defense + bonuses.defense + (crewBonus.defense || 0) + (setBonus.defense || 0) + traitBonus.defense + ancestorBonus.defense,
+    speed: player.speed + bonuses.speed + (crewBonus.speed || 0) + (setBonus.speed || 0) + traitBonus.speed + ancestorBonus.speed,
+    strength: player.strength + bonuses.strength + (crewBonus.strength || 0) + (setBonus.strength || 0) + traitBonus.strength + ancestorBonus.strength,
   };
 }
 
@@ -327,6 +363,11 @@ function executeCombat(playerId, foe, combatType, lootFn) {
     const winLossField = combatType === 'pvp' ? (won ? 'pvp_wins' : 'pvp_losses') : combatType === 'raid' ? null : (won ? 'wins' : 'losses');
     if (winLossField) updates[winLossField] = player[winLossField] + 1;
     if (combatType === 'raid' && won) { updates.raids_completed = player.raids_completed + 1; updates.bosses_killed = player.bosses_killed + 1; }
+    // Ancestor favor: +1 pve, +2 pvp, +5 raid (only on win)
+    if (won) {
+      const favorGain = combatType === 'raid' ? 5 : combatType === 'pvp' ? 2 : 1;
+      updates.ancestor_favor = player.ancestor_favor + favorGain;
+    }
     upd(playerId, updates);
     if (lootDrop) {
       sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, lootDrop);
@@ -370,7 +411,7 @@ export function pvpFight(playerId) {
   if (player.stamina < ECO.pvpCost) return { success: false, error: 'Not enough stamina' };
   const opponent = sql('SELECT * FROM players WHERE id!=? AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(playerId, Math.max(1, player.level - 3), player.level + 3);
   const opponentLevel = opponent?.level || Math.max(1, player.level + randBetween(-2, 2));
-  const opponentName = opponent ? opponent.username : ['ShadowBot', 'IronFist_AI', 'NPC_Warrior', 'AutoBrute'][randBetween(0, 3)] + ` (Lv.${opponentLevel})`;
+  const opponentName = opponent ? opponent.username : ['PhantomDisciple', 'JadeGolem', 'WanderingMonk', 'DemonServant'][randBetween(0, 3)] + ` (Lv.${opponentLevel})`;
   const result = executeCombat(playerId, {
     name: opponentName, cost: ECO.pvpCost,
     stats: opponent ? getEffectiveStats(opponent.id) : { hp: 80 + opponentLevel * 12, max_hp: 80 + opponentLevel * 12, attack: 6 + opponentLevel * 2, defense: 3 + opponentLevel, speed: 4 + opponentLevel, strength: 4 + opponentLevel },
@@ -586,7 +627,7 @@ export function highestAssetIcon(playerId) {
   return best?.icon || null;
 }
 
-// ── Bank — protects gold from PvP ──
+// ── Bank — protects gold from duels ──
 
 export function depositGold(playerId, amount) {
   const player = getPlayer(playerId);
@@ -642,12 +683,17 @@ export function getActiveGearSet(playerId) {
   return null;
 }
 
-// ── Avatar ──
+// ── Ancestor (patron worship) ──
 
+export function setAncestor(playerId, ancestorId) {
+  if (!ANCESTORS[ancestorId]) return { success: false, error: 'Unknown ancestor' };
+  upd(playerId, { ancestor: ancestorId, ancestor_favor: 0 }); // switching resets favor
+  return { success: true, ancestor: ANCESTORS[ancestorId] };
+}
+
+// Legacy compat — avatar field now points to ancestor
 export function setAvatar(playerId, avatarId) {
-  if (!AVATARS[avatarId]) return { success: false, error: 'Unknown avatar' };
-  upd(playerId, { avatar: avatarId });
-  return { success: true, avatar: AVATARS[avatarId] };
+  return setAncestor(playerId, avatarId);
 }
 
 // ── Streak multiplier ──

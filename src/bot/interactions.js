@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, AVATARS, TABS } from '../core/config.js';
+import { ENEMIES, RAIDS, ZONES, SKILLS, EQUIPMENT, ASSETS, CREW, AVATARS, ANCESTORS, TABS } from '../core/config.js';
 import { renderHome } from '../rendering/views/home.js';
 import { renderFight } from '../rendering/views/fight.js';
 import { renderRaids } from '../rendering/views/raids.js';
@@ -90,7 +90,7 @@ function executeAction(playerId, action, args = {}) {
     sell_junk: () => { const r = Player.sellAllJunk(playerId, 'common'); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     sell_outgrown: () => { const r = Player.sellBelowEquipped(playerId); return r.success ? { success: true, message: `Sold ${r.count} items for ${r.gold}g`, view: 'inventory' } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}`, view: 'skills' } : r; },
-    set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `Avatar: ${r.avatar.name}`, view: 'profile' } : r; },
+    set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}`, view: 'profile' } : r; },
   };
   const handler = actions[action];
   if (!handler) return { success: false, message: 'Unknown action' };
@@ -105,7 +105,7 @@ function selectMenu(id, placeholder, options) {
 }
 
 async function sendView(interaction, playerId, view, extra, isReply) {
-  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, extra), { name: 'halcyon.jpg' })], components: buildUI(view, playerId), content: '' };
+  const payload = { files: [new AttachmentBuilder(renderView(playerId, view, extra), { name: 'tianming.jpg' })], components: buildUI(view, playerId), content: '' };
   isReply ? await interaction.reply(payload) : await interaction.update(payload);
 }
 
@@ -114,7 +114,7 @@ async function sendResult(interaction, playerId, result, fallback) {
   activeView.set(playerId, view);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
-    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'halcyon.jpg' })],
+    files: [new AttachmentBuilder(renderView(playerId, view, result.extra || null), { name: 'tianming.jpg' })],
     components: buildUI(view, playerId),
   });
 }
@@ -127,7 +127,7 @@ export async function handleCommand(interaction) {
 
 export async function handleButton(interaction) {
   const playerId = interaction.user.id;
-  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
+  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
   const [action, ...args] = interaction.customId.split(':');
   if (action === 'nav') { activeView.set(playerId, args[0]); return sendView(interaction, playerId, args[0]); }
   return sendResult(interaction, playerId, executeAction(playerId, action, {}));
@@ -137,7 +137,7 @@ export async function handleSelectMenu(interaction) {
   const playerId = interaction.user.id;
   const [menuId] = interaction.customId.split(':');
   const val = interaction.values[0];
-  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/halcyon`', ephemeral: true });
+  if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
   const map = {
     fight_select: ['fight_enemy', { enemyId: val }], raid_select: ['raid', { raidId: val }],
     equip: ['equip', { itemRowId: +val }], pick_skill: ['pick_skill', { skillId: val }],
@@ -155,7 +155,7 @@ function buildUI(view, playerId) {
   const player = Player.getPlayer(playerId);
   const rows = [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('grind').setLabel('💰 GRIND').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId('daily').setLabel('🎁').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('deposit').setLabel('🏦').setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId('pvp').setLabel('🥊').setStyle(ButtonStyle.Danger),
@@ -197,13 +197,13 @@ function buildUI(view, playerId) {
   if (view === 'home' && player) {
     const hired = new Set(Player.getPlayerCrew(playerId).map(r => r.crew_id));
     const hireable = Object.entries(CREW).filter(([id, c]) => !hired.has(id) && player.level >= c.minLevel);
-    if (hireable.length) rows.push(selectMenu('hire_crew', '🤵 Hire crew...',
+    if (hireable.length) rows.push(selectMenu('hire_crew', '🧘 Recruit companion...',
       hireable.map(([id, c]) => ({ label: `${c.icon} ${c.name} (${c.cost}g)`, description: `+${c.bonusValue} ${c.bonusType}`, value: id }))));
   }
   if (view === 'profile' && player) {
-    rows.push(selectMenu('avatar_select', '🎨 Choose avatar...',
-      Object.entries(AVATARS).map(([id, av]) => ({
-        label: av.name, description: player.avatar === id ? '✓ Current' : 'Select', value: id }))));
+    rows.push(selectMenu('avatar_select', '🙏 Choose ancestor...',
+      Object.entries(ANCESTORS).map(([id, a]) => ({
+        label: `${a.icon} ${a.name}`, description: player.ancestor === id ? `✓ Worshipping (${player.ancestor_favor} favor)` : a.desc.slice(0, 50), value: id }))));
   }
   if (player?.pending_skill_picks > 0) {
     const offers = Player.getSkillOffers(playerId);

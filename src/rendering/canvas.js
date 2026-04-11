@@ -135,7 +135,7 @@ export function rr(ctx, x, y, w, h, r) {
 // ── Layout ──
 export function layout(player, tab, opts = {}) {
   const { canvas, ctx } = create(); bg(ctx);
-  title(ctx, 'HALCYON', 20, 14, 22);
+  title(ctx, 'TIANMING', 20, 14, 22);
   if (opts.sub) txt(ctx, opts.sub, 132, 19, { s: 12, c: C.textMuted });
   let rx = 780;
   for (const s of (opts.stats || [{ l: '🪙', v: fmt(player.gold), c: C.gold }]).reverse()) {

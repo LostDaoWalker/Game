@@ -4,7 +4,7 @@ const C = R.colors;
 
 export function renderFight(player, result) {
   const { canvas, ctx, bx, by } = R.layout(player, 'fight', {
-    sub: '// COMBAT ZONE',
+    sub: '// MARTIAL ARENA',
     stats: [{ l: '⚡', v: `${player.stamina}/${player.max_stamina}`, c: C.staminaBar }, { l: '🪙', v: R.fmt(player.gold), c: C.gold }],
   });
   result ? drawResult(ctx, bx, by, 760, player, result) : drawZones(ctx, bx, by, player);
@@ -28,9 +28,9 @@ function drawZones(ctx, bx, by, p) {
   }
   // PvP
   const pvpY = by + 168;
-  R.panel(ctx, bx, pvpY, 760, 58, { t: 'PVP ARENA', glow: true, gc: C.secondary });
-  R.txt(ctx, '⚔️ Challenge a random opponent near your level', bx + 12, pvpY + 28, { s: 13, c: C.text });
-  R.txt(ctx, `⚡${ECO.pvpCost} stamina | Win gold, XP, glory`, bx + 12, pvpY + 44, { s: 11, c: C.staminaBar });
+  R.panel(ctx, bx, pvpY, 760, 58, { t: 'MARTIAL ARENA', glow: true, gc: C.secondary });
+  R.txt(ctx, '⚔️ Challenge a fellow cultivator near your realm', bx + 12, pvpY + 28, { s: 13, c: C.text });
+  R.txt(ctx, `⚡${ECO.pvpCost} stamina | Win gold, XP, honor`, bx + 12, pvpY + 44, { s: 11, c: C.staminaBar });
   // HP
   const hpY = pvpY + 68;
   R.panel(ctx, bx, hpY, 760, 34);

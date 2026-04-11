@@ -1,11 +1,11 @@
-import { RAIDS } from '../../core/config.js';
+import { RAIDS, EQUIPMENT } from '../../core/config.js';
 import * as R from '../canvas.js';
 import { drawResult } from './fight.js';
 const C = R.colors;
 
 export function renderRaids(player, result) {
   const { canvas, ctx, bx, by } = R.layout(player, 'raids', {
-    sub: '// RAID BOSSES',
+    sub: '// TRIBULATION BOSSES',
     stats: [{ l: '⚡', v: `${player.stamina}/${player.max_stamina}`, c: C.staminaBar }, { l: '🪙', v: R.fmt(player.gold), c: C.gold }],
   });
 
@@ -26,7 +26,7 @@ export function renderRaids(player, result) {
     R.txt(ctx, `${(raid.lootChance * 100) | 0}% loot`, x + 356, y + 74, { s: 10, c: C.accent, a: 'right' });
     let lootX = x + 12;
     R.txt(ctx, 'DROPS:', lootX, y + 92, { s: 9, c: C.textMuted }); lootX += 42;
-    for (const itemId of raid.lootTable.slice(0, 3)) { R.txt(ctx, itemId.replace(/_/g, ' '), lootX, y + 92, { s: 9, c: C.text }); lootX += 80; }
+    for (const itemId of raid.lootTable.slice(0, 3)) { R.txt(ctx, EQUIPMENT[itemId]?.name || itemId, lootX, y + 92, { s: 9, c: C.text }); lootX += 80; }
     R.bar(ctx, x + 12, y + 110, 344, 5, 1, C.danger);
     index++;
   }

@@ -96,6 +96,13 @@ export function getDb() {
     CREATE INDEX IF NOT EXISTS idx_cl_pid ON combat_log(player_id);
     CREATE INDEX IF NOT EXISTS idx_nw ON players(networth DESC);
   `);
+  // Migration: add cultivation columns (safe to re-run)
+  const cols = new Set(db.pragma('table_info(players)').map(c => c.name));
+  if (!cols.has('bloodline'))      db.exec("ALTER TABLE players ADD COLUMN bloodline TEXT NOT NULL DEFAULT 'common'");
+  if (!cols.has('physique'))       db.exec("ALTER TABLE players ADD COLUMN physique TEXT NOT NULL DEFAULT 'ordinary'");
+  if (!cols.has('talent'))         db.exec("ALTER TABLE players ADD COLUMN talent TEXT NOT NULL DEFAULT 'dull'");
+  if (!cols.has('ancestor'))       db.exec("ALTER TABLE players ADD COLUMN ancestor TEXT NOT NULL DEFAULT 'azure_dragon'");
+  if (!cols.has('ancestor_favor')) db.exec("ALTER TABLE players ADD COLUMN ancestor_favor INTEGER NOT NULL DEFAULT 0");
   return db;
 }
 

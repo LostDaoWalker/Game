@@ -53,7 +53,7 @@ export function drawCard(ctx, centerX, centerY, player) {
   // Full-bleed art clipped to card
   ctx.save();
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.clip();
-  ctx.drawImage(getAvatarArt(player.avatar), x, y);
+  ctx.drawImage(getAvatarArt(player.ancestor || player.avatar), x, y);
 
   // Top scrim for username
   const topScrim = ctx.createLinearGradient(x, y, x, y + 60);
