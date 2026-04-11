@@ -290,7 +290,7 @@ function executeCombat(playerId, foe, combatType, lootFn) {
   const lootDrop = won && lootFn ? lootFn(player.level) : null;
 
   return tx(() => {
-    const newHp = clamp(won ? result.attackerHp : (player.max_hp * .1 | 0), 1, player.max_hp);
+    const newHp = player.max_hp; // always full HP between fights
     const updates = {
       stamina: floorZero(player.stamina - foe.cost), hp: newHp,
       gold: floorZero(player.gold + earnedGold),
@@ -460,9 +460,6 @@ export function grind(playerId) {
     if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
   }
 
-  // Auto-heal to full after combat
-  const afterFight = getPlayer(playerId);
-  if (afterFight.hp < afterFight.max_hp) upd(playerId, { hp: afterFight.max_hp });
 
   const junk = sellAllJunk(playerId, 'common');
   if (junk.success) { result.junkGold = junk.gold; result.junkCount = junk.count; }
