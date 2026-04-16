@@ -43,11 +43,7 @@ function applyQi(player, qiToAdd) {
     }
   }
 
-  if (step === STEP_NAMES.length - 1) {
-    const cap = stepCost(realm, step);
-    if (qi > cap) qi = cap;
-  }
-
+  // Qi is never capped — past Absolute Perfection it keeps accumulating.
   return { realm, stage, step, qi, prowess_bonus_pct, tribulation_charge, stepsAdvanced, perfectionsReached };
 }
 
@@ -82,12 +78,6 @@ export function cultivate(playerId) {
   const player = getPlayer(playerId);
   if (!player) return { success: false, error: 'No player' };
 
-  // Can't cultivate usefully when at the final step with qi already capped
-  const atMax = player.step === STEP_NAMES.length - 1;
-  if (atMax && player.qi >= stepCost(player.realm, player.step)) {
-    return { success: false, error: 'Breakthrough first — no more room to accumulate.' };
-  }
-
   const { cultivateGrantMin: lo, cultivateGrantMax: hi } = CULTIVATION;
   const grant = lo + Math.floor(Math.random() * (hi - lo + 1));
   const a = applyQi(player, grant);
@@ -102,6 +92,7 @@ export function cultivate(playerId) {
 
 // ── Breakthrough ──
 // Unlocks at BREAKTHROUGH_STEP (Peak). Advances stage, or realm if at top of realm.
+// Qi carries over into the new stage/realm; applyQi re-runs step-advancement.
 // On realm breakthrough, tribulation_charge is consumed.
 export function breakthrough(playerId) {
   const p = getPlayer(playerId);
@@ -113,15 +104,34 @@ export function breakthrough(playerId) {
   if (isAtTopOfRealm(p)) {
     if (isAtFinalRealm(p)) return { success: false, error: 'You stand at the summit. No higher realm is known.' };
     const nextRealm = REALMS[p.realm + 1];
+    // Realm breakthrough: advance realm, reset stage/step, qi carries over, charge consumed
+    const newState = {
+      realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
+      prowess_bonus_pct: p.prowess_bonus_pct, tribulation_charge: 0,
+    };
+    const a = applyQi(newState, 0);
     sql(`UPDATE players SET
-          realm=?, stage=0, step=0, qi=0, tribulation_charge=0,
+          realm=?, stage=?, step=?, qi=?,
+          prowess_bonus_pct=?, tribulation_charge=?,
           last_active=unixepoch()
-         WHERE id=?`).run(p.realm + 1, playerId);
+         WHERE id=?`)
+      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
     return { success: true, kind: 'realm', previous: realm.name, next: nextRealm.name };
   }
 
+  // Stage breakthrough: advance stage, reset step, qi carries over
   const nextStage = realm.stages[p.stage + 1];
-  sql(`UPDATE players SET stage=stage+1, step=0, qi=0, last_active=unixepoch() WHERE id=?`).run(playerId);
+  const newState = {
+    realm: p.realm, stage: p.stage + 1, step: 0, qi: p.qi,
+    prowess_bonus_pct: p.prowess_bonus_pct, tribulation_charge: p.tribulation_charge,
+  };
+  const a = applyQi(newState, 0);
+  sql(`UPDATE players SET
+        stage=?, step=?, qi=?,
+        prowess_bonus_pct=?, tribulation_charge=?,
+        last_active=unixepoch()
+       WHERE id=?`)
+    .run(a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
   return { success: true, kind: 'stage', previous: realm.stages[p.stage].name, next: nextStage.name };
 }
 
@@ -132,17 +142,18 @@ export function getCultivationView(player) {
   const stepName = STEP_NAMES[player.step];
   const cost = stepCost(player.realm, player.step);
   const atMax = player.step === STEP_NAMES.length - 1;
-  const progress = atMax && player.qi >= cost ? 1 : Math.max(0, Math.min(1, player.qi / cost));
+  const progress = Math.max(0, Math.min(1, player.qi / cost));
   const canBreakthrough = player.step >= BREAKTHROUGH_STEP;
-  const isStageCap = atMax && player.qi >= cost;
-  const isFinalCap = isStageCap && isAtTopOfRealm(player) && isAtFinalRealm(player);
+  // At the summit of the highest realm's last stage, Absolute Perfection —
+  // qi still accumulates, but breakthrough has nowhere to go.
+  const isFinalCap = atMax && isAtTopOfRealm(player) && isAtFinalRealm(player);
 
   return {
     realm, stage, stepName,
     stepIndex: player.step,
     qi: player.qi, qiCost: cost, progress,
-    canBreakthrough, isFinalCap, isStageCap,
-    canCultivate: !isStageCap,
+    canBreakthrough, isFinalCap,
+    canCultivate: true,
     prowessBonusPct: player.prowess_bonus_pct || 0,
     tribulationCharge: player.tribulation_charge,
   };

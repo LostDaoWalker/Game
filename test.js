@@ -38,13 +38,18 @@ ok('pushed past Peak', p1.step >= BREAKTHROUGH_STEP);
 const v1 = P.getCultivationView(p1);
 ok('view says canBreakthrough', v1.canBreakthrough);
 
-// ── Stage breakthrough ──
+// ── Stage breakthrough — qi carries over into new stage ──
+// At this point: after 1h tick (60 qi) in Mortal stage 0, the player has
+// consumed Entry(5)+Early(7)+Middle(10)+Late(15)+Peak(22)=59 qi, qi=1, step=5 (Lesser Perfection)
+const prePeak = P.getPlayer('test');
+const preBreakQi = prePeak.qi;
 const br1 = P.breakthrough('test');
 ok('stage breakthrough success', br1.success && br1.kind === 'stage');
 const p2 = P.getPlayer('test');
 ok('advanced to stage 1', p2.stage === 1);
-ok('step reset to 0',      p2.step === 0);
-ok('qi reset to 0',        p2.qi === 0);
+// With preBreakQi (≤ Entry cost 5) carrying over, step may still be 0 in new stage.
+// Key invariant: qi is preserved across the breakthrough (not reset to 0 unless it was already 0).
+ok('qi carried over on stage breakthrough', p2.qi === preBreakQi || p2.step > 0);
 
 // ── Breakthrough blocked before Peak ──
 const br2 = P.breakthrough('test');
@@ -59,6 +64,18 @@ ok('realm breakthrough success',           br3.success && br3.kind === 'realm');
 ok('advanced to Martial Artist (realm 1)', P.getPlayer('test').realm === 1);
 ok('reset to stage 0',                      P.getPlayer('test').stage === 0);
 ok('charge consumed on realm breakthrough', P.getPlayer('test').tribulation_charge === 0);
+
+// ── Carry-over: heavy qi on breakthrough jumps many steps in the new stage/realm ──
+// Place player at Peak of Mortal stage 0 with a huge qi reserve, break through,
+// and verify they auto-advance through multiple steps in stage 1.
+sql(`UPDATE players SET realm=0, stage=0, step=4, qi=300, prowess_bonus_pct=0, tribulation_charge=0 WHERE id=?`)
+  .run('test');
+const brCarry = P.breakthrough('test');
+ok('stage breakthrough with carry-over succeeds', brCarry.success);
+const pCarry = P.getPlayer('test');
+ok('advanced to stage 1',                        pCarry.stage === 1);
+ok('carry-over advanced several steps',          pCarry.step >= 5); // 300 qi easily covers Entry→Peak (59) plus Lesser Perfection (45)
+ok('perfection reached via carry-over grants prowess', pCarry.prowess_bonus_pct >= 5);
 
 // ── Perfection rewards ──
 // Place player at Lesser Perfection (step 5) with 0 qi, then give enough time to reach Greater.
@@ -81,20 +98,21 @@ ok('qi advances past Extreme Perfection into Absolute', pPastExtreme.step === 8)
 ok('Absolute grants +5% prowess',                       pPastExtreme.prowess_bonus_pct === 5);
 ok('Absolute grants +1 charge',                         pPastExtreme.tribulation_charge === 1);
 
-// ── Qi caps at Absolute Perfection (step 8), not earlier ──
+// ── Qi keeps accumulating past Absolute Perfection (no cap) ──
 sql('UPDATE players SET realm=0, stage=0, step=8, qi=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 100 * 3600, 'test');
 P.tickCultivation('test');
 const pAbsCap = P.getPlayer('test');
-ok('step stays at Absolute Perfection (8)', pAbsCap.step === 8);
-ok('qi caps at Absolute Perfection cost',   pAbsCap.qi === P.stepCost(0, 8));
+ok('step stays at Absolute Perfection (8)',                pAbsCap.step === 8);
+ok('qi accumulates past step 8 cost (no cap)',             pAbsCap.qi > P.stepCost(0, 8));
+ok('qi equals raw walltime gain (100h × 60 = 6000 xp)',    pAbsCap.qi === 6000);
 
-// ── Final-cap detection ──
-// Push to last realm, last stage, Absolute Perfection, qi maxed
-sql('UPDATE players SET realm=?, stage=?, step=8, qi=? WHERE id=?')
-  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, P.stepCost(REALMS.length - 1, 8), 'test');
+// ── Final-cap detection — position-based, not qi-based ──
+// Push to last realm, last stage, Absolute Perfection. Qi value does not matter.
+sql('UPDATE players SET realm=?, stage=?, step=8, qi=0 WHERE id=?')
+  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, 'test');
 const vFinal = P.getCultivationView(P.getPlayer('test'));
-ok('isFinalCap at summit', vFinal.isFinalCap);
+ok('isFinalCap at summit (qi agnostic)', vFinal.isFinalCap);
 
 // ── Prowess bonus is independent of cultivation rate ──
 // Rate stays at base regardless of prowess_bonus_pct.
@@ -137,14 +155,16 @@ sql('UPDATE players SET realm=1, stage=0, step=0, qi=0 WHERE id=?').run('test');
 const mMA = P.cultivate('test');
 ok('MA cultivate grant still in [1, 3]', mMA.qiGained >= 1 && mMA.qiGained <= 3);
 
-// Cultivate blocked at Absolute Perfection cap
+// Cultivate stays enabled even at Absolute Perfection — qi keeps accumulating
 sql(`UPDATE players SET realm=0, stage=0, step=8, qi=? WHERE id=?`).run(P.stepCost(0, 8), 'test');
-const mCap = P.cultivate('test');
-ok('cultivate blocked at stage Absolute Perfection cap', !mCap.success);
+const mPast = P.cultivate('test');
+ok('cultivate succeeds past Absolute Perfection cost', mPast.success);
+const pPast = P.getPlayer('test');
+ok('qi keeps growing past step 8 cost', pPast.qi > P.stepCost(0, 8));
 
-// View exposes canCultivate correctly
-const vCap = P.getCultivationView(P.getPlayer('test'));
-ok('view: canCultivate=false at cap', !vCap.canCultivate);
+// View: canCultivate is always true (no cap blocking)
+const vNoCap = P.getCultivationView(P.getPlayer('test'));
+ok('view: canCultivate=true always', vNoCap.canCultivate);
 
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');
