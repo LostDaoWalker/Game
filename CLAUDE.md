@@ -36,6 +36,7 @@ No config.js, no player logic, no rendering yet — they will be added as each s
 
 ## Conventions
 
+- **Rendering: text-only with emoji.** All screens are Discord text + native markdown + emoji. Progress bars are `░` / `█` characters. No canvas / image renderers unless the user explicitly requests one for a specific screen. No `@napi-rs/canvas` dependency.
 - ES modules (`import`/`export`). Node 20+.
 - All game data will live in a dedicated config module (single source of truth) — don't hardcode names/stats inline.
 - Internal IDs (talent IDs, daoist IDs, etc.) are stable once live; display names can change freely.

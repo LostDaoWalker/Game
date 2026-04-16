@@ -10,6 +10,12 @@ A xianxia idle Discord bot, played globally through a single slash command. Open
 - **No FOMO. No punishment. No progress loss.** Missing a day costs nothing. Failing at anything never takes away what you earned.
 - **Plays all day.** The loop is idle-friendly and rewards checking in regularly without demanding it.
 
+## Presentation
+
+- **Text-only with emoji.** All screens are Discord text + native markdown + emoji. **No canvas / image rendering** is used unless explicitly called out for a specific screen.
+- **Native tools.** Bold, inline code, list bullets. Progress bars are drawn with `░` / `█` characters. Code blocks where alignment matters.
+- **Skimmable.** A screen's meaningful state should be visible at a glance, without scrolling.
+
 ## The arc
 
 1. **Mortal.** Weak, scrawny, unfamiliar with martial arts. Everyone starts here.
