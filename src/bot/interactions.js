@@ -21,6 +21,8 @@ function formatGrindResult(result) {
   const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
   if (legendary) parts.push(`LEGENDARY ${legendary.icon} ${legendary.name}`);
   else if (epic) parts.push(`EPIC ${epic.icon} ${epic.name}`);
+  if (result.favorGained > 0) parts.push(`+${result.favorGained} ${ANCESTORS[result.player.ancestor]?.icon || '🙏'} favor`);
+  for (const boon of result.newBoons || []) parts.push(`✨ ${boon.icon} ${boon.name} unlocked`);
   if (result.player.pending_skill_picks > 0) parts.push(`${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
   return { success: true, message: parts.join(' | '), extra: result };
 }

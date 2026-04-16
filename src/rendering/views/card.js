@@ -64,11 +64,10 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.textAlign = 'center';
   ctx.fillText(player.username, centerX, y + 14);
 
-  // Level + ancestor
-  const anc = ANCESTORS[player.ancestor] || ANCESTORS.azure_dragon;
+  // Level
   ctx.fillStyle = '#d4d4d8';
   ctx.font = "12px 'Courier New',monospace";
-  ctx.fillText(`Lv.${player.level} · ${anc.icon} ${anc.name}`, centerX, y + 42);
+  ctx.fillText(`Lv.${player.level}`, centerX, y + 42);
 
   // Gold — bottom center
   ctx.fillStyle = '#f5c542';

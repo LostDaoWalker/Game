@@ -348,11 +348,12 @@ export function bestEnemy(playerId) {
 
 export function grind(playerId) {
   regenStamina(playerId);
-  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: getPlayer(playerId).level, stoppedReason: null };
+  const before = getPlayer(playerId);
+  const startLevel = before.level, startFavor = before.ancestor_favor;
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: startLevel, favorGained: 0, newBoons: [], stoppedReason: null };
 
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
-    const startLevel = getPlayer(playerId).level;
     for (let i = 0; i < 5; i++) {
       const r = fightEnemy(playerId, enemyId);
       if (!r.success) { result.stoppedReason = r.error; break; }
@@ -361,14 +362,23 @@ export function grind(playerId) {
       result.xpEarned += r.xp;
       if (r.lootItem) result.loot.push(r.lootItem);
     }
-    const endLevel = getPlayer(playerId).level;
-    if (endLevel > startLevel) { result.leveled = true; result.newLevel = endLevel; }
   }
 
   const junk = sellAllJunk(playerId, 'common');
-  if (junk.success) { result.goldEarned += junk.gold; }
+  if (junk.success) result.goldEarned += junk.gold;
 
-  result.player = getPlayer(playerId);
-  result.xpPercent = result.player.xp / result.player.xp_needed;
+  const after = getPlayer(playerId);
+  if (after.level > startLevel) { result.leveled = true; result.newLevel = after.level; }
+  result.favorGained = after.ancestor_favor - startFavor;
+  const ancestor = ANCESTORS[after.ancestor];
+  if (ancestor && result.favorGained > 0) {
+    for (const boon of ancestor.boons) {
+      if (startFavor < boon.favor && after.ancestor_favor >= boon.favor) {
+        result.newBoons.push({ name: boon.name, icon: ancestor.icon, ancestor: ancestor.name });
+      }
+    }
+  }
+  result.player = after;
+  result.xpPercent = after.xp / after.xp_needed;
   return result;
 }
