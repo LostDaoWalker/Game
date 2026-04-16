@@ -36,6 +36,7 @@ function formatQuestResult(result, flavorVerb) {
 function executeAction(playerId, action, args = {}) {
   Player.regenStamina(playerId);
   const actions = {
+    grind: () => formatQuestResult(Player.grind(playerId), 'Cultivate'),
     quest: () => formatQuestResult(Player.grind(playerId, args.enemyId), args.verb),
     arena: () => {
       const r = Player.pvpFight(playerId);
@@ -108,15 +109,18 @@ function buildUI(playerId) {
   const player = Player.getPlayer(playerId);
   const rows = [];
 
-  // Row 1: Tavern — 3 quest buttons + ARENA
+  // Row 1: Tavern — CULTIVATE (auto-best) + 3 themed quest buttons + ARENA
   if (player) {
-    const quests = Player.getQuestOffers(playerId);
-    const questButtons = quests.map(q => {
-      const label = `${q.enemy.icon} ${q.verb} ${q.enemy.name}`.slice(0, 80);
-      return new ButtonBuilder().setCustomId(`quest:${q.enemyId}:${q.verb}`).setLabel(label).setStyle(ButtonStyle.Success);
-    });
-    questButtons.push(new ButtonBuilder().setCustomId('arena').setLabel('🗡️ ARENA').setStyle(ButtonStyle.Danger));
-    rows.push(new ActionRowBuilder().addComponents(...questButtons));
+    const quests = Player.getQuestOffers(playerId).slice(0, 3);
+    const buttons = [
+      new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success),
+      ...quests.map(q => {
+        const label = `${q.enemy.icon} ${q.verb} ${q.enemy.name}`.slice(0, 80);
+        return new ButtonBuilder().setCustomId(`quest:${q.enemyId}:${q.verb}`).setLabel(label).setStyle(ButtonStyle.Primary);
+      }),
+      new ButtonBuilder().setCustomId('arena').setLabel('🗡️ ARENA').setStyle(ButtonStyle.Danger),
+    ];
+    rows.push(new ActionRowBuilder().addComponents(...buttons));
   }
 
   // Equip items
