@@ -1,11 +1,11 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
 import * as P from '../core/player.js';
-import { TALENT_RARITY_COLORS, ROLLS, REALMS } from '../core/config.js';
+import { TALENT_RARITY_COLORS, ROLLS, REALMS, GRAND_REALMS } from '../core/config.js';
 
 const RARITY_COLORS = TALENT_RARITY_COLORS; // same mapping for daoists
 
 function breakthroughLabel(v) {
-  if (v.isRealmBreakthrough && v.tribulationChance != null) return `⚡ Tribulation (${Math.round(v.tribulationChance * 100)}%)`;
+  if (v.isGrandBreakthrough && v.tribulationChance != null) return `⚡ Tribulation (${Math.round(v.tribulationChance * 100)}%)`;
   return '⚡ Breakthrough';
 }
 
@@ -19,7 +19,7 @@ function bar(pct, width = 12) {
 function renderHome(player) {
   const v = P.getCultivationView(player);
   const lines = [
-    `${v.realm.icon} **${v.realm.name} · ${v.stage.name} · ${v.stepName}**`,
+    `${v.grandRealm.icon} **${v.grandRealm.name} · ${v.realm.name} · ${v.stageName} · ${v.stepName}**`,
     `${bar(v.progress)} ${v.qi}/${v.qiCost} xp`,
   ];
   if (v.isFinalCap) lines.push('*(peak of the known path)*');
@@ -54,13 +54,15 @@ function renderRankings(playerId) {
   else {
     top.forEach((p, i) => {
       const realm = REALMS[p.realm];
+      const grand = GRAND_REALMS[realm.grandId];
       const marker = p.id === playerId ? '**→**' : `**${i + 1}.**`;
-      lines.push(`${marker} ${p.username} — ${p.prowess_rating} *(${realm.icon} ${realm.name})*`);
+      lines.push(`${marker} ${p.username} — ${p.prowess_rating} *(${grand.icon} ${grand.name} · ${realm.name})*`);
     });
   }
   if (!top.some(p => p.id === playerId)) {
     const realm = REALMS[me.realm];
-    lines.push('', `*Your rank: #${myRank} — ${me.prowess_rating} (${realm.icon} ${realm.name})*`);
+    const grand = GRAND_REALMS[realm.grandId];
+    lines.push('', `*Your rank: #${myRank} — ${me.prowess_rating} (${grand.icon} ${grand.name} · ${realm.name})*`);
   }
   return lines.join('\n');
 }
@@ -176,7 +178,7 @@ function renderProfile(playerId) {
   const stats = P.getEffectiveStats(playerId);
   const talents = P.getTalents(playerId);
 
-  const lines = [`📜 **Profile**`, `${v.realm.icon} ${v.realm.name} · ${v.stage.name} · ${v.stepName}`];
+  const lines = [`📜 **Profile**`, `${v.grandRealm.icon} ${v.grandRealm.name} · ${v.realm.name} · ${v.stageName} · ${v.stepName}`];
 
   lines.push('', '**Talents**');
   if (!talents.length) lines.push('*(none yet)*');
@@ -304,28 +306,36 @@ export async function handleButton(interaction) {
     P.tickCultivation(id);
     if (!r.success) {
       banner = `⚠️ ${r.error}`;
-    } else if (r.kind === 'realm_fail') {
+    } else if (r.kind === 'grand_fail') {
       banner = [
-        `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `⚡ **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
         `_${r.heartDemon}_`,
         `You are thrown back, unchanged. Build more strength, then try again.`,
       ].join('\n');
-    } else if (r.kind === 'realm') {
+    } else if (r.kind === 'grand') {
       const coinsLine = `💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`;
       const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity} · ${P.talentTierOdds(r.talent.rarity)}%)*` : null;
       banner = [
-        `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `⚡ **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
         `_${r.heartDemon}_`,
         `You prevail.`,
         ``,
-        `✨ **Breakthrough to ${r.next}**`,
+        `${r.grandRealm.icon} ✨ **You have ascended to ${r.grandRealm.name}** — ${r.next}`,
+        coinsLine,
+        talentLine,
+      ].filter(Boolean).join('\n');
+    } else if (r.kind === 'realm') {
+      const coinsLine = `💎 +${r.stonesEarned}${r.jadeEarned ? ` · 🟢 +${r.jadeEarned}` : ''}`;
+      const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity} · ${P.talentTierOdds(r.talent.rarity)}%)*` : null;
+      banner = [
+        `✨ **${r.previous} → ${r.next}**`,
         coinsLine,
         talentLine,
       ].filter(Boolean).join('\n');
     } else {
       // stage breakthrough
       const coins = r.stonesEarned ? `\n💎 +${r.stonesEarned}` : '';
-      banner = `${r.previous} → **${r.next}**${coins}`;
+      banner = `${r.realmName} · ${r.previous} → **${r.next}**${coins}`;
     }
   } else {
     P.tickCultivation(id);

@@ -1,7 +1,7 @@
 // Smoke test — cultivation spine + talents
 import { getDb, sql } from './src/core/database.js';
 import * as P from './src/core/player.js';
-import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS } from './src/core/config.js';
+import { REALMS, STAGES, STEP_NAMES, BREAKTHROUGH_STEP, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS } from './src/core/config.js';
 import { rmSync, mkdirSync } from 'fs';
 
 let passed = 0, failed = 0;
@@ -55,15 +55,22 @@ ok('qi carried over on stage breakthrough', p2.qi === preBreakQi || p2.step > 0)
 const br2 = P.breakthrough('test');
 ok('breakthrough blocked before Peak', !br2.success);
 
-// ── Second stage to Peak, then realm breakthrough ──
+// ── Second stage breakthrough (1→2, still within realm 0) ──
 sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
 P.tickCultivation('test');
 ok('stage 1 reached Peak', P.getPlayer('test').step >= BREAKTHROUGH_STEP);
-sql('UPDATE players SET tribulation_charge=100 WHERE id=?').run('test'); // force tribulation success
+const br2b = P.breakthrough('test');
+ok('second stage breakthrough success',   br2b.success && br2b.kind === 'stage');
+ok('advanced to stage 2 (Late)',          P.getPlayer('test').stage === 2);
+
+// ── Realm breakthrough within Mortal grand (no tribulation) ──
+sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
+P.tickCultivation('test');
+ok('stage 2 reached Peak', P.getPlayer('test').step >= BREAKTHROUGH_STEP);
 const br3 = P.breakthrough('test');
-ok('realm breakthrough success',           br3.success && br3.kind === 'realm');
-ok('advanced to Martial Artist (realm 1)', P.getPlayer('test').realm === 1);
-ok('reset to stage 0',                      P.getPlayer('test').stage === 0);
+ok('realm breakthrough kind=realm (within Mortal grand)', br3.success && br3.kind === 'realm');
+ok('advanced to Inner Awakening (realm 1)',                P.getPlayer('test').realm === 1);
+ok('reset to stage 0',                                     P.getPlayer('test').stage === 0);
 
 // ── Carry-over: heavy qi on breakthrough jumps many steps in the new stage/realm ──
 // Place player at Peak of Mortal stage 0 with a huge qi reserve, break through,
@@ -109,7 +116,7 @@ ok('qi equals raw walltime gain (100h × 60 = 6000 xp)',    pAbsCap.qi === 6000)
 // ── Final-cap detection — position-based, not qi-based ──
 // Push to last realm, last stage, Absolute Perfection. Qi value does not matter.
 sql('UPDATE players SET realm=?, stage=?, step=8, qi=0 WHERE id=?')
-  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, 'test');
+  .run(REALMS.length - 1, STAGES.length - 1, 'test');
 const vFinal = P.getCultivationView(P.getPlayer('test'));
 ok('isFinalCap at summit (qi agnostic)', vFinal.isFinalCap);
 
@@ -187,8 +194,8 @@ ok('rollTalent returns an id',    rolled && !!rolled.id);
 ok('rolled id exists in TALENTS', !!TALENTS[rolled.id]);
 ok('rolled rarity is a weight key', rolled.rarity in TALENT_RARITY_WEIGHTS);
 
-// Realm breakthrough grants a new talent
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0 WHERE id=?').run('t2');
+// Realm breakthrough (within Mortal grand) grants a new talent
+sql('UPDATE players SET realm=0, stage=2, step=4, qi=0 WHERE id=?').run('t2');
 const beforeCount = P.getTalents('t2').length;
 const brTalent = P.breakthrough('t2');
 ok('realm breakthrough succeeds',          brTalent.success && brTalent.kind === 'realm');
@@ -256,12 +263,25 @@ const brS = P.breakthrough('cur');
 ok('stage breakthrough returns stonesEarned',      typeof brS.stonesEarned === 'number');
 ok('stage breakthrough grants at least +100 stones', P.getPlayer('cur').spirit_stones >= 100);
 
-// Realm breakthrough grants +500 stones + 2 jade
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0, tribulation_charge=100 WHERE id=?').run('cur');
+// Realm breakthrough (within grand) grants +500 stones + 1 jade, no tribulation
+sql('UPDATE players SET realm=0, stage=2, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0 WHERE id=?').run('cur');
 const brR = P.breakthrough('cur');
-ok('realm breakthrough kind=realm', brR.success && brR.kind === 'realm');
-ok('realm breakthrough grants 500+ stones', P.getPlayer('cur').spirit_stones >= 500);
-ok('realm breakthrough grants 2 jade',       P.getPlayer('cur').jade === 2);
+ok('realm breakthrough kind=realm',          brR.success && brR.kind === 'realm');
+ok('realm breakthrough grants 500+ stones',   P.getPlayer('cur').spirit_stones >= 500);
+ok('realm breakthrough grants 1 jade',        P.getPlayer('cur').jade === 1);
+
+// Grand breakthrough (Mortal → Martial Artist) grants +2000 stones + 5 jade after tribulation
+sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0, tribulation_charge=100 WHERE id=?').run('cur');
+let brG = null;
+for (let i = 0; i < 100; i++) {
+  sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, spirit_stones=0, jade=0, tribulation_charge=100 WHERE id=?').run('cur');
+  brG = P.breakthrough('cur');
+  if (brG.kind === 'grand') break;
+}
+ok('grand breakthrough kind=grand',           brG.success && brG.kind === 'grand');
+ok('grand breakthrough grants 2000+ stones',   P.getPlayer('cur').spirit_stones >= 2000);
+ok('grand breakthrough grants 5 jade',         P.getPlayer('cur').jade === 5);
+ok('grand breakthrough advances to Martial Artist', P.getPlayer('cur').realm === 3);
 
 // ── Daoists / Rolls ──
 P.getOrCreatePlayer('roller', 'Roller');
@@ -311,7 +331,7 @@ ok('stone roll never yields legendary', !sawLegendary);
 // ── Team / Slots ──
 P.getOrCreatePlayer('teamer', 'Teamer');
 const teamerBase = P.getPlayer('teamer');
-ok('Mortal gets 0 daoist slots', P.getDaoistSlots(teamerBase) === 0);
+ok('Mortal grand gets 0 daoist slots', P.getDaoistSlots(teamerBase) === 0);
 
 // Mortal can't assign a daoist
 sql('UPDATE players SET spirit_stones=10000 WHERE id=?').run('teamer');
@@ -321,9 +341,15 @@ ok('roster grew from roll', rosterTeam.length === 1);
 const mortalAssign = P.assignDaoistToTeam('teamer', rosterTeam[0].rowId);
 ok('Mortal cannot assign daoist to team', !mortalAssign.success);
 
-// Martial Artist gets 2 daoist slots
-sql('UPDATE players SET realm=1 WHERE id=?').run('teamer');
-ok('Martial Artist gets 2 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 2);
+// All three Mortal realms yield 0 daoist slots
+for (const r of [0, 1, 2]) {
+  sql('UPDATE players SET realm=? WHERE id=?').run(r, 'teamer');
+  ok(`Mortal realm ${r} gets 0 daoist slots`, P.getDaoistSlots(P.getPlayer('teamer')) === 0);
+}
+
+// Martial Artist grand gets 2 daoist slots (realm 3 is first MA realm)
+sql('UPDATE players SET realm=3 WHERE id=?').run('teamer');
+ok('Martial Artist grand gets 2 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 2);
 
 const maAssign = P.assignDaoistToTeam('teamer', rosterTeam[0].rowId);
 ok('MA can assign daoist to team', maAssign.success);
@@ -346,9 +372,9 @@ ok('after remove, team is below slot limit', P.getTeamDaoists('teamer').length =
 const benchDaoist = P.getDaoists('teamer').find(d => !d.in_team);
 ok('reassign succeeds with free slot', P.assignDaoistToTeam('teamer', benchDaoist.rowId).success);
 
-// Cultivator has 4 daoist slots
-sql('UPDATE players SET realm=2 WHERE id=?').run('teamer');
-ok('Cultivator gets 4 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 4);
+// Cultivator grand gets 4 daoist slots (realm 6 is first Cultivator realm)
+sql('UPDATE players SET realm=6 WHERE id=?').run('teamer');
+ok('Cultivator grand gets 4 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 4);
 
 // ── PvP / Prowess rating ──
 P.getOrCreatePlayer('fighter', 'Fighter');
@@ -358,7 +384,7 @@ ok('fresh player has rating 1000', P.getPlayer('fighter').prowess_rating === 100
 const mortalPower = P.getTotalPower('fighter');
 ok('Mortal stage 0 step 0 power floor', mortalPower >= 100);
 
-sql('UPDATE players SET realm=2, stage=3, step=8 WHERE id=?').run('fighter');
+sql('UPDATE players SET realm=8, stage=2, step=8 WHERE id=?').run('fighter');
 const cultivatorPower = P.getTotalPower('fighter');
 ok('Cultivator power > Mortal power', cultivatorPower > mortalPower);
 
@@ -392,54 +418,55 @@ ok('rankings sorted by rating desc',   rankings.every((p, i) => i === 0 || ranki
 // Rank is number
 ok('getMyRank returns number', typeof P.getMyRank('fighter') === 'number');
 
-// ── Tribulations + Heart Demons ──
+// ── Tribulations + Heart Demons (grand-realm crossings only) ──
+// Top of Mortal grand is realm=2 (Spirit Refining), stage=2 (Late), step=4 (Peak) — crosses into Martial Artist.
 P.getOrCreatePlayer('trib', 'Tribulator');
 sql('DELETE FROM talents WHERE player_id=?').run('trib');
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
+sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
 
-// View should flag this as a realm breakthrough
+// View should flag this as a grand breakthrough
 const vTrib = P.getCultivationView(P.getPlayer('trib'));
-ok('view: isRealmBreakthrough at top-of-realm Peak', vTrib.isRealmBreakthrough);
+ok('view: isGrandBreakthrough at top-of-grand Peak', vTrib.isGrandBreakthrough);
 ok('view: tribulationChance is a number 0-1',
    typeof vTrib.tribulationChance === 'number' && vTrib.tribulationChance > 0 && vTrib.tribulationChance < 1);
 
-// Tribulation can fail (no progress loss) — keep retrying
+// Tribulation can fail (no progress loss) — keep retrying until the grand crossing succeeds
 let outcomes = [];
-for (let i = 0; i < 30 && P.getPlayer('trib').realm === 0; i++) {
+for (let i = 0; i < 30 && P.getPlayer('trib').realm === 2; i++) {
   const r = P.breakthrough('trib');
   outcomes.push(r.kind);
 }
-ok('at least one tribulation outcome observed', outcomes.length > 0);
-ok('eventually succeeded on realm breakthrough', P.getPlayer('trib').realm === 1);
+ok('at least one tribulation outcome observed',     outcomes.length > 0);
+ok('eventually ascended to Martial Artist (realm 3)', P.getPlayer('trib').realm === 3);
 
 // Charge increases success chance
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
+sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
 const baseChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
 sql('UPDATE players SET tribulation_charge=10 WHERE id=?').run('trib');
 const boostedChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
 ok('tribulation chance grows with charge', boostedChance > baseChance);
 
-// Charge is consumed on successful realm breakthrough.
+// Charge is consumed on successful grand breakthrough.
 // (Chance caps at 95%, so loop until success — no flake.)
 let tryResult = null;
 for (let i = 0; i < 100; i++) {
-  sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=50 WHERE id=?').run('trib');
+  sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, tribulation_charge=50 WHERE id=?').run('trib');
   tryResult = P.breakthrough('trib');
-  if (tryResult.kind === 'realm') break;
+  if (tryResult.kind === 'grand') break;
 }
-ok('high charge eventually succeeds within 100 tries', tryResult.kind === 'realm');
-ok('charge consumed on realm-up',                       P.getPlayer('trib').tribulation_charge === 0);
+ok('high charge eventually succeeds within 100 tries', tryResult.kind === 'grand');
+ok('charge consumed on grand breakthrough',             P.getPlayer('trib').tribulation_charge === 0);
 
 // Failure preserves charge
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0, prowess_bonus_pct=0 WHERE id=?').run('trib');
+sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, tribulation_charge=0, prowess_bonus_pct=0 WHERE id=?').run('trib');
 // baseSuccess 40% — sometimes fails. Look for a failure in many tries.
 let sawFail = false;
 for (let i = 0; i < 20; i++) {
   sql('UPDATE players SET tribulation_charge=0 WHERE id=?').run('trib');
   const r = P.breakthrough('trib');
-  if (r.kind === 'realm_fail') { sawFail = true; break; }
+  if (r.kind === 'grand_fail') { sawFail = true; break; }
   // if success, reset to test again
-  sql('UPDATE players SET realm=0, stage=1, step=4, qi=0 WHERE id=?').run('trib');
+  sql('UPDATE players SET realm=2, stage=2, step=4, qi=0 WHERE id=?').run('trib');
 }
 ok('tribulation can fail at base chance', sawFail);
 

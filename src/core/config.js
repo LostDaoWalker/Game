@@ -26,43 +26,40 @@ export const STEP_COST_MULT = Object.freeze([1, 1.4, 2, 3, 4.5, 9, 18, 36, 72]);
 // +5% prowess AND +1 tribulation_charge.
 export const PERFECTION_STEPS = Object.freeze(new Set([5, 6, 7, 8]));
 
-// ── Realms ──
-// Each realm has named stages. Breakthrough from the last stage's Peak
-// jumps the player into the next realm (index +1).
+// ── Grand Realms ──
+// The three big arcs. Each contains several REALMS (below). Only breakthroughs
+// that cross a grand-realm boundary trigger a Tribulation — becoming a
+// Cultivator should feel splendid and terribly difficult.
 // teamSlots includes the player themselves; daoistSlots = teamSlots - 1.
-// Players start alone (1 slot) and grow the team on realm breakthroughs.
-export const REALMS = Object.freeze([
-  {
-    id: 0, key: 'mortal', name: 'Mortal', icon: '🌱',
-    stages: Object.freeze([
-      Object.freeze({ key: 'body_forging',    name: 'Body Forging' }),
-      Object.freeze({ key: 'inner_awakening', name: 'Inner Awakening' }),
-    ]),
-    baseStepCost: 5,
-    teamSlots: 1,
-  },
-  {
-    id: 1, key: 'martial_artist', name: 'Martial Artist', icon: '🥋',
-    stages: Object.freeze([
-      Object.freeze({ key: 'strength', name: 'Strength Tempering' }),
-      Object.freeze({ key: 'meridian', name: 'Meridian Opening' }),
-      Object.freeze({ key: 'bone',     name: 'Bone Refining' }),
-    ]),
-    baseStepCost: 25,
-    teamSlots: 3,
-  },
-  {
-    id: 2, key: 'cultivator', name: 'Cultivator', icon: '✨',
-    stages: Object.freeze([
-      Object.freeze({ key: 'qi_gathering',     name: 'Qi Gathering' }),
-      Object.freeze({ key: 'foundation',       name: 'Foundation' }),
-      Object.freeze({ key: 'core_formation',   name: 'Core Formation' }),
-      Object.freeze({ key: 'core_integration', name: 'Core Integration' }),
-    ]),
-    baseStepCost: 125,
-    teamSlots: 5,
-  },
+export const GRAND_REALMS = Object.freeze([
+  { id: 0, key: 'mortal',         name: 'Mortal',         icon: '🌱', teamSlots: 1 },
+  { id: 1, key: 'martial_artist', name: 'Martial Artist', icon: '🥋', teamSlots: 3 },
+  { id: 2, key: 'cultivator',     name: 'Cultivator',     icon: '✨', teamSlots: 5 },
 ]);
+
+// ── Realms ──
+// Flat list. Each realm belongs to a grand realm (grandId). Step cost rises
+// smoothly across realms so late-game pacing is slower but passive idle still
+// makes progress.
+export const REALMS = Object.freeze([
+  // Mortal grand realm
+  { id: 0, grandId: 0, key: 'body_forging',    name: 'Body Forging',    baseStepCost:   5 },
+  { id: 1, grandId: 0, key: 'inner_awakening', name: 'Inner Awakening', baseStepCost:   8 },
+  { id: 2, grandId: 0, key: 'spirit_refining', name: 'Spirit Refining', baseStepCost:  14 },
+  // Martial Artist grand realm
+  { id: 3, grandId: 1, key: 'qi_circulation',    name: 'Qi Circulation',    baseStepCost:  25 },
+  { id: 4, grandId: 1, key: 'meridian_opening',  name: 'Meridian Opening',  baseStepCost:  45 },
+  { id: 5, grandId: 1, key: 'bone_refining',     name: 'Bone Refining',     baseStepCost:  80 },
+  // Cultivator grand realm
+  { id: 6, grandId: 2, key: 'qi_condensation',     name: 'Qi Condensation',     baseStepCost: 140 },
+  { id: 7, grandId: 2, key: 'foundation_building', name: 'Foundation Building', baseStepCost: 250 },
+  { id: 8, grandId: 2, key: 'core_formation',      name: 'Core Formation',      baseStepCost: 450 },
+]);
+
+// ── Stages — uniform across all realms ──
+// Every realm has three stages: Early, Middle, Late. Full perfection of any
+// stage grants the same four perfection rewards (Lesser/Greater/Extreme/Absolute).
+export const STAGES = Object.freeze(['Early', 'Middle', 'Late']);
 
 // ── Cultivation tuning ──
 export const CULTIVATION = Object.freeze({
@@ -156,10 +153,12 @@ export const ROLLS = Object.freeze({
 // Spirit Stones = general (will spend on daoist rolls and cultivation aid).
 // Jade         = premium (rarer; higher-tier daoist rolls).
 export const CURRENCIES = Object.freeze({
-  perfectionStones:         50,   // per perfection step reached
-  stageBreakthroughStones: 100,   // per stage breakthrough
-  realmBreakthroughStones: 500,   // per realm breakthrough
-  realmBreakthroughJade:     2,   // per realm breakthrough
+  perfectionStones:          50,   // per perfection step reached
+  stageBreakthroughStones:  100,   // per stage breakthrough
+  realmBreakthroughStones:  500,   // per (non-grand) realm breakthrough
+  realmBreakthroughJade:      1,   // per (non-grand) realm breakthrough
+  grandBreakthroughStones: 2000,   // per grand realm breakthrough (on tribulation success)
+  grandBreakthroughJade:      5,   // per grand realm breakthrough
 });
 // Granted randomly at character creation and on every realm breakthrough.
 // Private — never shown to other players. Weighted rarity pick, then uniform pick within tier.
