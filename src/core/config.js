@@ -75,11 +75,12 @@ export const CULTIVATION = Object.freeze({
 // grand crossings (becoming Martial Artist / Cultivator) are splendid and
 // terribly difficult. No progress loss on failure — just try again.
 // tribulation_charge (earned at each perfection step) adds +perChargeBonus
-// to whichever tribulation you face next, then is consumed on success.
+// per point. Stack enough charge and a tribulation reaches 100% — a
+// guaranteed pass. Charge is consumed on success.
 export const TRIBULATION = Object.freeze({
-  stage: Object.freeze({ baseSuccess: 0.80, maxSuccess: 0.98 }),
-  realm: Object.freeze({ baseSuccess: 0.60, maxSuccess: 0.95 }),
-  grand: Object.freeze({ baseSuccess: 0.40, maxSuccess: 0.95 }),
+  stage: Object.freeze({ baseSuccess: 0.80 }),
+  realm: Object.freeze({ baseSuccess: 0.60 }),
+  grand: Object.freeze({ baseSuccess: 0.40 }),
   perChargeBonus: 0.04,
   heartDemons: Object.freeze([
     'A phantom of your former self whispers doubts.',

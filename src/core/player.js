@@ -283,7 +283,7 @@ export function tribulationChance(player, kind) {
   const cfg = TRIBULATION[kind];
   if (!cfg) return null;
   const base = cfg.baseSuccess + (player.tribulation_charge || 0) * TRIBULATION.perChargeBonus;
-  return Math.min(cfg.maxSuccess, base);
+  return Math.min(1, base);
 }
 
 function pickHeartDemon() {

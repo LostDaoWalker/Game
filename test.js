@@ -489,6 +489,21 @@ sql('UPDATE players SET tribulation_charge=10 WHERE id=?').run('trib');
 const boostedChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
 ok('tribulation chance grows with charge', boostedChance > baseChance);
 
+// Enough charge pushes chance to 100% — guaranteed pass.
+// Grand needs (1.00 - 0.40) / 0.04 = 15 charge.
+sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, tribulation_charge=15 WHERE id=?').run('trib');
+ok('grand chance hits 1.0 at charge=15', P.getCultivationView(P.getPlayer('trib')).tribulationChance === 1);
+sql('UPDATE players SET tribulation_charge=100 WHERE id=?').run('trib');
+ok('chance caps at 1.0 (never exceeds)', P.getCultivationView(P.getPlayer('trib')).tribulationChance === 1);
+// 20 consecutive grand tribulations at charge=15 should all succeed — deterministic pass.
+let guaranteedSuccesses = 0;
+for (let i = 0; i < 20; i++) {
+  sql('UPDATE players SET realm=2, stage=2, step=4, qi=0, jade=0, spirit_stones=0, tribulation_charge=15 WHERE id=?').run('trib');
+  const r = P.breakthrough('trib');
+  if (r.kind === 'grand') guaranteedSuccesses++;
+}
+ok('charge=15 guarantees grand pass (20/20)', guaranteedSuccesses === 20);
+
 // Charge is consumed on success of any tribulation.
 for (const kind of ['stage', 'realm', 'grand']) {
   const setup = kind === 'stage' ? 'realm=0, stage=0, step=4'
@@ -516,6 +531,9 @@ for (let i = 0; i < 50; i++) {
 ok('charge preserved on tribulation failure', chargePreserved);
 
 // Perfection steps grant tribulation_charge again (re-added)
+// Clear talents first — prior grand-tribulation successes granted talents
+// that would otherwise inflate the passive rate and advance past step 6.
+sql('DELETE FROM talents WHERE player_id=?').run('trib');
 sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 60 * 60, 'trib');
 P.tickCultivation('trib');
