@@ -1,5 +1,7 @@
 # TIANMING — Agent Context
 
+> **Read [VISION.md](./VISION.md) first.** It's the contract every change is measured against. This file describes the codebase; VISION.md describes the game.
+
 A Discord RPG bot where players cultivate from mortal to immortal. Xianxia-themed idle game. Single-view UI, one button (`🔥 CULTIVATE`), everything else is contextual dropdowns.
 
 ## Run
