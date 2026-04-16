@@ -192,20 +192,22 @@ export function pvpFight(playerId) {
   const newMyRating = eloUpdate(myRating, oppRating, won);
   const ratingDelta = newMyRating - myRating;
   const stonesEarned = won ? PVP.stoneReward : 0;
+  const faceDelta = won ? PVP.faceWin : -PVP.faceLoss;
 
   return tx(() => {
-    sql(`UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, spirit_stones=spirit_stones+?, last_active=unixepoch() WHERE id=?`)
-      .run(newMyRating, won ? 1 : 0, won ? 0 : 1, stonesEarned, playerId);
+    sql(`UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, spirit_stones=spirit_stones+?, face=face+?, last_active=unixepoch() WHERE id=?`)
+      .run(newMyRating, won ? 1 : 0, won ? 0 : 1, stonesEarned, faceDelta, playerId);
     if (realOpp) {
       const newOppRating = eloUpdate(oppRating, myRating, !won);
-      sql('UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+? WHERE id=?')
-        .run(newOppRating, won ? 0 : 1, won ? 1 : 0, realOpp.id);
+      const oppFaceDelta = won ? -PVP.faceLoss : PVP.faceWin;
+      sql('UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, face=face+? WHERE id=?')
+        .run(newOppRating, won ? 0 : 1, won ? 1 : 0, oppFaceDelta, realOpp.id);
     }
     return {
       success: true, won,
       opponent: { name: oppName, rating: oppRating, power: oppPower, isAi: !realOpp },
       myPower, ratingBefore: myRating, ratingAfter: newMyRating, ratingDelta,
-      stonesEarned,
+      stonesEarned, faceDelta,
     };
   });
 }

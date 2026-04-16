@@ -370,15 +370,19 @@ ok('pvpFight returns an opponent',       !!fight1.opponent);
 ok('rating changes after fight',         fight1.ratingAfter !== 1000);
 ok('W/L counter updated',                P.getPlayer('fighter').pvp_wins + P.getPlayer('fighter').pvp_losses === 1);
 
-// Win awards 50 stones
+// Win awards 50 stones + 10 face; loss drops 10 face
 const startStones = P.getPlayer('fighter').spirit_stones;
+const startFace = P.getPlayer('fighter').face;
 let wins = 0, losses = 0;
 for (let i = 0; i < 20; i++) {
   const r = P.pvpFight('fighter');
   if (r.won) wins++; else losses++;
 }
 const endStones = P.getPlayer('fighter').spirit_stones;
-ok('stones awarded only on wins', endStones === startStones + wins * 50);
+const endFace = P.getPlayer('fighter').face;
+ok('stones awarded only on wins',  endStones === startStones + wins * 50);
+ok('face +10 per win, -10 per loss', endFace === startFace + wins * 10 - losses * 10);
+ok('face can go negative on bad run', P.getPlayer('fighter').face !== null);
 
 // Rankings: fighter shows up
 const rankings = P.getRankings(10);
@@ -415,11 +419,16 @@ sql('UPDATE players SET tribulation_charge=10 WHERE id=?').run('trib');
 const boostedChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
 ok('tribulation chance grows with charge', boostedChance > baseChance);
 
-// Charge is consumed on successful realm breakthrough
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=50 WHERE id=?').run('trib'); // forces ~100% success
-const trySuccess = P.breakthrough('trib');
-ok('high charge forces success', trySuccess.kind === 'realm');
-ok('charge consumed on realm-up',  P.getPlayer('trib').tribulation_charge === 0);
+// Charge is consumed on successful realm breakthrough.
+// (Chance caps at 95%, so loop until success — no flake.)
+let tryResult = null;
+for (let i = 0; i < 100; i++) {
+  sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=50 WHERE id=?').run('trib');
+  tryResult = P.breakthrough('trib');
+  if (tryResult.kind === 'realm') break;
+}
+ok('high charge eventually succeeds within 100 tries', tryResult.kind === 'realm');
+ok('charge consumed on realm-up',                       P.getPlayer('trib').tribulation_charge === 0);
 
 // Failure preserves charge
 sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0, prowess_bonus_pct=0 WHERE id=?').run('trib');

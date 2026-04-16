@@ -106,6 +106,8 @@ export const PVP = Object.freeze({
   ratingWindow:   200,  // ± window for matchmaking real opponents
   eloK:            24,  // ELO K-factor
   stoneReward:     50,  // 💎 on win
+  faceWin:         10,  // 🧘 face gained on win (reputation / 面子)
+  faceLoss:        10,  // 🧘 face lost on defeat
   aiPowerVariance: 0.3, // AI power is in [0.85, 1.15] × player power
   aiNames: Object.freeze([
     'Wandering Disciple',

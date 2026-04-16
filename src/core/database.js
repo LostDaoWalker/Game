@@ -29,7 +29,8 @@ export function getDb() {
       jade INTEGER NOT NULL DEFAULT 0 CHECK(jade >= 0),
       prowess_rating INTEGER NOT NULL DEFAULT 1000,
       pvp_wins INTEGER NOT NULL DEFAULT 0,
-      pvp_losses INTEGER NOT NULL DEFAULT 0
+      pvp_losses INTEGER NOT NULL DEFAULT 0,
+      face INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS talents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +64,7 @@ export function getDb() {
   add('prowess_rating',      "INTEGER NOT NULL DEFAULT 1000");
   add('pvp_wins',            "INTEGER NOT NULL DEFAULT 0");
   add('pvp_losses',          "INTEGER NOT NULL DEFAULT 0");
+  add('face',                "INTEGER NOT NULL DEFAULT 0");
   db.exec('CREATE INDEX IF NOT EXISTS idx_players_rating ON players(prowess_rating DESC)');
   // Drop retired columns if a dev DB from an earlier iteration still has them
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
