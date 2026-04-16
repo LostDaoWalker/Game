@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -187,7 +187,7 @@ export function pickSkill(playerId, skillId) {
 
 function getTraitBonuses(player) {
   const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
-  for (const src of [BLOODLINES[player.bloodline], PHYSIQUES[player.physique], TALENTS[player.talent]]) {
+  for (const src of [BLOODLINES[player.bloodline], PHYSIQUES[player.physique], TALENTS[player.talent], CLASSES[player.class]]) {
     if (src?.bonus) for (const s in src.bonus) if (s in b) b[s] += src.bonus[s];
   }
   return b;
@@ -436,6 +436,12 @@ export function setAncestor(playerId, ancestorId) {
   if (!ANCESTORS[ancestorId]) return { success: false, error: 'Unknown ancestor' };
   upd(playerId, { ancestor: ancestorId, ancestor_favor: 0 }); // switching resets favor
   return { success: true, ancestor: ANCESTORS[ancestorId] };
+}
+
+export function setClass(playerId, classId) {
+  if (!CLASSES[classId]) return { success: false, error: 'Unknown cultivation path' };
+  upd(playerId, { class: classId });
+  return { success: true, class: CLASSES[classId] };
 }
 
 // ── GRIND — core loop: fight, sell junk ──

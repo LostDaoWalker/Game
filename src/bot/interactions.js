@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, AttachmentBuilder } from 'discord.js';
 import * as Player from '../core/player.js';
-import { SKILLS, EQUIPMENT, ANCESTORS } from '../core/config.js';
+import { SKILLS, EQUIPMENT, ANCESTORS, CLASSES } from '../core/config.js';
 import { renderGrind } from '../rendering/views/grind.js';
 
 function renderView(playerId, extra) {
@@ -33,6 +33,7 @@ function executeAction(playerId, action, args = {}) {
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}` } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}` } : r; },
     set_ancestor: () => { const r = Player.setAncestor(playerId, args.ancestorId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}` } : r; },
+    set_class: () => { const r = Player.setClass(playerId, args.classId); return r.success ? { success: true, message: `${r.class.icon} Path set: ${r.class.name}` } : r; },
   };
   const handler = actions[action];
   if (!handler) return { success: false, message: 'Unknown action' };
@@ -72,6 +73,7 @@ export async function handleSelectMenu(interaction) {
     equip: ['equip', { itemRowId: +val }],
     pick_skill: ['pick_skill', { skillId: val }],
     ancestor_select: ['set_ancestor', { ancestorId: val }],
+    class_select: ['set_class', { classId: val }],
   };
   const [action, args] = map[menuId] || ['unknown', {}];
   const result = executeAction(playerId, action, args);
@@ -96,6 +98,15 @@ function buildUI(playerId) {
     const unequipped = Player.getAllEquipment(playerId).filter(r => !r.equipped);
     if (unequipped.length) rows.push(selectMenu('equip', '⚔️ Equip item...',
       unequipped.slice(0, 24).map(r => { const c = EQUIPMENT[r.item_id]; return c ? { label: `${c.icon} ${c.name} (${c.slot})`, description: Object.entries(c.stats).map(([k, v]) => `+${v} ${k}`).join(', '), value: `${r.id}` } : null; }).filter(Boolean)));
+  }
+
+  // Cultivation path (class)
+  if (player) {
+    rows.push(selectMenu('class_select', '🧘 Choose cultivation path...',
+      Object.entries(CLASSES).map(([id, c]) => ({
+        label: `${c.icon} ${c.name}`,
+        description: player.class === id ? `✓ Walking this path` : c.desc.slice(0, 50),
+        value: id }))));
   }
 
   // Ancestor selection

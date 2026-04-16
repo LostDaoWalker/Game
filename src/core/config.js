@@ -158,6 +158,13 @@ export const TALENTS = Object.freeze({
   dull:     { name: 'Dull Roots',                  icon: '🪨', bonus: {},                      weight: 50 },
 });
 
+// ── Classes (Three Paths of Cultivation) — player-chosen ──
+export const CLASSES = Object.freeze({
+  sword: { name: 'Sword Path', icon: '⚔️', desc: 'Masters of the blade — fast, precise, lethal', bonus: { attack: 4, speed: 1 } },
+  body:  { name: 'Body Path',  icon: '💪', desc: 'Tempered flesh — unbreakable will', bonus: { defense: 2, hp: 25, strength: 2 } },
+  qi:    { name: 'Qi Path',    icon: '✨', desc: 'Spiritual masters — guided by flowing energy', bonus: { speed: 3, strength: 2 } },
+});
+
 // ── Ancestors — patron worship, build favor for boons ──
 export const ANCESTORS = Object.freeze({
   azure_dragon: {

@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { ANCESTORS, FRAME_TIERS, getRealm } from '../../core/config.js';
+import { ANCESTORS, FRAME_TIERS, CLASSES, getRealm } from '../../core/config.js';
 import * as R from '../canvas.js';
 
 const CARD_W = 350, CARD_H = 490;
@@ -55,10 +55,10 @@ export function drawCard(ctx, centerX, centerY, player) {
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.clip();
   ctx.drawImage(getAncestorArt(player.ancestor), x, y);
 
-  // Top scrim for username
-  const topScrim = ctx.createLinearGradient(x, y, x, y + 60);
-  topScrim.addColorStop(0, 'rgba(0,0,0,.6)'); topScrim.addColorStop(1, 'transparent');
-  ctx.fillStyle = topScrim; ctx.fillRect(x, y, CARD_W, 60);
+  // Top scrim for username + realm + class
+  const topScrim = ctx.createLinearGradient(x, y, x, y + 80);
+  topScrim.addColorStop(0, 'rgba(0,0,0,.7)'); topScrim.addColorStop(1, 'transparent');
+  ctx.fillStyle = topScrim; ctx.fillRect(x, y, CARD_W, 80);
 
   // Bottom scrim for networth
   const botScrim = ctx.createLinearGradient(x, y + CARD_H - 80, x, y + CARD_H);
@@ -73,11 +73,15 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.textAlign = 'center';
   ctx.fillText(player.username, centerX, y + 14);
 
-  // Realm — just below username
+  // Realm + class — just below username
   const realm = getRealm(player.level);
+  const cls = CLASSES[player.class] || CLASSES.sword;
   ctx.fillStyle = '#d4d4d8';
   ctx.font = "12px 'Courier New',monospace";
-  ctx.fillText(`${realm.icon} Lv.${player.level} ${realm.name}`, centerX, y + 40);
+  ctx.fillText(`${realm.icon} Lv.${player.level} ${realm.name}`, centerX, y + 38);
+  ctx.fillStyle = frameColor;
+  ctx.font = "bold 11px 'Courier New',monospace";
+  ctx.fillText(`${cls.icon} ${cls.name}`, centerX, y + 54);
 
   // Networth — bottom center
   ctx.fillStyle = frameColor;

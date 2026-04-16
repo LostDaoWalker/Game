@@ -42,7 +42,8 @@ export function getDb() {
       physique TEXT NOT NULL DEFAULT 'ordinary',
       talent TEXT NOT NULL DEFAULT 'dull',
       ancestor TEXT NOT NULL DEFAULT 'azure_dragon',
-      ancestor_favor INTEGER NOT NULL DEFAULT 0
+      ancestor_favor INTEGER NOT NULL DEFAULT 0,
+      class TEXT NOT NULL DEFAULT 'sword'
     );
     CREATE TABLE IF NOT EXISTS equipment (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +91,7 @@ export function getDb() {
   if (!cols.has('talent'))         db.exec("ALTER TABLE players ADD COLUMN talent TEXT NOT NULL DEFAULT 'dull'");
   if (!cols.has('ancestor'))       db.exec("ALTER TABLE players ADD COLUMN ancestor TEXT NOT NULL DEFAULT 'azure_dragon'");
   if (!cols.has('ancestor_favor')) db.exec("ALTER TABLE players ADD COLUMN ancestor_favor INTEGER NOT NULL DEFAULT 0");
+  if (!cols.has('class'))          db.exec("ALTER TABLE players ADD COLUMN class TEXT NOT NULL DEFAULT 'sword'");
   // Drop dead columns from old installs
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
   // Drop dead tables
