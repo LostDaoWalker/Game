@@ -10,13 +10,9 @@ function renderHome(player) {
   const v = P.getCultivationView(player);
   const lines = [
     `${v.realm.icon} **${v.realm.name} · ${v.stage.name} · ${v.stepName}**`,
-    `${bar(v.progress)} ${(v.progress * 100) | 0}%`,
+    `${bar(v.progress)} ${v.qi}/${v.qiCost}`,
   ];
   if (v.isFinalCap) lines.push('*(peak of the known path)*');
-  else if (v.etaSeconds > 0) lines.push(`~${P.formatDuration(v.etaSeconds)} to next step`);
-  if (v.prowessBonusPct > 0 || v.tribulationCharge > 0) {
-    lines.push(`prowess +${v.prowessBonusPct}% · charge ${v.tribulationCharge}`);
-  }
   return lines.join('\n');
 }
 
