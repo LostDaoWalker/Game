@@ -44,13 +44,11 @@ test.js                  smoke test
 
 ## Game data (config.js)
 
-- `REALMS` — title by level (Mortal → Martial Artist → Qi Condensation → Foundation → Golden Core)
-- `BLOODLINES` / `PHYSIQUES` / `TALENTS` — weighted-random at character creation, small permanent stat bonuses
+- `CLASSES` — 3 cultivation paths (Sword/Body/Qi), player-chosen stat-shape
 - `ANCESTORS` — 5 patrons with 3 boons each unlocked at favor 50/200/500
 - `ENEMIES` — 12 enemies across 4 zones (neighborhood → topfloor, internal IDs kept for DB continuity)
 - `EQUIPMENT` — 29 items, 5 slots, 5 rarities (60/25/10/4/1% weights)
 - `SKILLS` — 8 cultivation arts, 3 types (offensive/defensive/utility), max level 3
-- `FRAME_TIERS` — card border color by networth
 
 ## Balancing knobs (config.js)
 

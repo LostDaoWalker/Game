@@ -1,29 +1,16 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, ANCESTORS, CLASSES } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
+const floorZero = v => Math.max(0, v | 0);
 
-// Unbiased Fisher-Yates — biased sort(() => Math.random() - .5) produces non-uniform distributions
-function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const swapIndex = (Math.random() * (i + 1)) | 0;
-    [array[i], array[swapIndex]] = [array[swapIndex], array[i]];
+// Unbiased Fisher-Yates
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return array;
-}
-
-// Write-boundary guards — CHECK constraints are the real enforcement, these prevent noisy constraint errors
-const floorZero = value => Math.max(0, value | 0);
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value | 0));
-
-// ── Weighted random pick — used for bloodlines, physiques, talents ──
-function weightedPick(table) {
-  const entries = Object.entries(table);
-  let total = 0;
-  for (const [, v] of entries) total += v.weight;
-  let roll = Math.random() * total;
-  for (const [id, v] of entries) { roll -= v.weight; if (roll <= 0) return id; }
-  return entries[0][0];
+  return arr;
 }
 
 // ── Player CRUD ──
@@ -33,10 +20,7 @@ export const getPlayer = id => sql('SELECT * FROM players WHERE id=?').get(id);
 export function getOrCreatePlayer(id, username) {
   const existing = getPlayer(id);
   if (existing) return existing;
-  const bloodline = weightedPick(BLOODLINES);
-  const physique = weightedPick(PHYSIQUES);
-  const talent = weightedPick(TALENTS);
-  sql('INSERT OR IGNORE INTO players(id,username,bloodline,physique,talent) VALUES(?,?,?,?,?)').run(id, username, bloodline, physique, talent);
+  sql('INSERT OR IGNORE INTO players(id,username) VALUES(?,?)').run(id, username);
   return getPlayer(id);
 }
 
@@ -52,7 +36,6 @@ export function regenStamina(playerId) {
   }
 }
 
-// Seconds until the next stamina tick arrives
 export function staminaEtaSeconds(player) {
   if (player.stamina >= player.max_stamina) return 0;
   const now = Date.now() / 1000 | 0;
@@ -82,8 +65,8 @@ export function addXp(playerId, amount) {
   const updates = { xp, level, xp_needed, max_hp, hp: max_hp, attack, defense, speed, strength };
   if (levelsGained) {
     updates.pending_skill_picks = player.pending_skill_picks + levelsGained;
-    updates.stamina = player.max_stamina; // full refill on level-up
-    updates.ancestor_favor = player.ancestor_favor + levelsGained * 10; // ancestor favor on level-up
+    updates.stamina = player.max_stamina;
+    updates.ancestor_favor = player.ancestor_favor + levelsGained * 10;
     generateSkillOffers(playerId);
   }
   upd(playerId, updates);
@@ -95,45 +78,62 @@ export function addXp(playerId, amount) {
 export const getAllEquipment = playerId => sql('SELECT * FROM equipment WHERE player_id=?').all(playerId);
 export const getEquippedItems = playerId => sql('SELECT * FROM equipment WHERE player_id=? AND equipped=1').all(playerId);
 
-function lookupOwnedItem(rowId, playerId) {
-  const row = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, playerId);
-  if (!row) return { err: 'Not found' };
-  const config = EQUIPMENT[row.item_id];
-  if (!config) return { err: 'Unknown item' };
-  return { row, config };
-}
-
 export function equipItem(playerId, rowId) {
-  const lookup = lookupOwnedItem(rowId, playerId);
-  if (lookup.err) return { success: false, error: lookup.err };
+  const row = sql('SELECT * FROM equipment WHERE id=? AND player_id=?').get(rowId, playerId);
+  if (!row) return { success: false, error: 'Not found' };
+  const config = EQUIPMENT[row.item_id];
+  if (!config) return { success: false, error: 'Unknown item' };
   return tx(() => {
     for (const equipped of getEquippedItems(playerId))
-      if (EQUIPMENT[equipped.item_id]?.slot === lookup.config.slot) sql('UPDATE equipment SET equipped=0 WHERE id=?').run(equipped.id);
+      if (EQUIPMENT[equipped.item_id]?.slot === config.slot) sql('UPDATE equipment SET equipped=0 WHERE id=?').run(equipped.id);
     sql('UPDATE equipment SET equipped=1 WHERE id=?').run(rowId);
-    return { success: true, item: lookup.config };
+    return { success: true, item: config };
   });
 }
 
-export function sellItem(playerId, rowId) {
-  const lookup = lookupOwnedItem(rowId, playerId);
-  if (lookup.err) return { success: false, error: lookup.err };
-  if (lookup.row.equipped) return { success: false, error: 'Unequip first' };
-  const goldValue = (lookup.config.sellValue * ECO.sellMult) | 0;
-  return tx(() => {
-    sql('DELETE FROM equipment WHERE id=?').run(rowId);
-    const player = getPlayer(playerId);
-    upd(playerId, { gold: floorZero(player.gold + goldValue) });
-    return { success: true, gold: goldValue, item: lookup.config };
-  });
-}
-
-export function getEquipmentBonuses(playerId) {
-  const bonuses = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+function getEquipmentBonuses(playerId) {
+  const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
   for (const equipped of getEquippedItems(playerId)) {
     const config = EQUIPMENT[equipped.item_id];
-    if (config) for (const stat in config.stats) if (stat in bonuses) bonuses[stat] += config.stats[stat];
+    if (config) for (const stat in config.stats) if (stat in b) b[stat] += config.stats[stat];
   }
-  return bonuses;
+  return b;
+}
+
+// Auto-equip if loot is stronger than current slot occupant
+function autoEquipIfBetter(playerId, itemId) {
+  const config = EQUIPMENT[itemId];
+  if (!config) return null;
+  const currentInSlot = getEquippedItems(playerId).find(row => EQUIPMENT[row.item_id]?.slot === config.slot);
+  const currentConfig = currentInSlot ? EQUIPMENT[currentInSlot.item_id] : null;
+  const sum = stats => Object.values(stats).reduce((a, b) => a + b, 0);
+  if (!currentConfig || sum(config.stats) > sum(currentConfig.stats)) {
+    const newRow = sql('SELECT id FROM equipment WHERE player_id=? AND item_id=? AND equipped=0 ORDER BY id DESC LIMIT 1').get(playerId, itemId);
+    if (newRow) { equipItem(playerId, newRow.id); return config; }
+  }
+  return null;
+}
+
+// Sell all unequipped items of a given rarity (or below)
+export function sellAllJunk(playerId, maxRarity = 'common') {
+  const tier = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+  const maxTier = tier[maxRarity] ?? 0;
+  const items = getAllEquipment(playerId).filter(row => {
+    if (row.equipped) return false;
+    const config = EQUIPMENT[row.item_id];
+    return config && (tier[config.rarity] ?? 0) <= maxTier;
+  });
+  if (!items.length) return { success: false, error: 'Nothing to sell' };
+  return tx(() => {
+    let totalGold = 0;
+    for (const row of items) {
+      totalGold += (EQUIPMENT[row.item_id].sellValue * ECO.sellMult) | 0;
+      sql('DELETE FROM equipment WHERE id=?').run(row.id);
+    }
+    const player = getPlayer(playerId);
+    upd(playerId, { gold: floorZero(player.gold + totalGold) });
+    return { success: true, gold: totalGold, count: items.length };
+  });
 }
 
 // ── Skills ──
@@ -142,8 +142,7 @@ export const getPlayerSkills = playerId => sql('SELECT * FROM skills WHERE playe
 export const getSkillOffers = playerId => sql('SELECT * FROM skill_offers WHERE player_id=?').get(playerId);
 
 function getSkillLevel(playerId, skillId) {
-  const row = sql('SELECT level FROM skills WHERE player_id=? AND skill_id=?').get(playerId, skillId);
-  return row?.level || 0;
+  return sql('SELECT level FROM skills WHERE player_id=? AND skill_id=?').get(playerId, skillId)?.level || 0;
 }
 
 function getSkillLevelMap(playerId) {
@@ -153,12 +152,12 @@ function getSkillLevelMap(playerId) {
 }
 
 function generateSkillOffers(playerId) {
-  const maxedSkills = new Set(
+  const maxed = new Set(
     getPlayerSkills(playerId)
-      .filter(row => { const config = SKILLS[row.skill_id]; return config && row.level >= config.maxLevel; })
+      .filter(row => SKILLS[row.skill_id] && row.level >= SKILLS[row.skill_id].maxLevel)
       .map(row => row.skill_id)
   );
-  const available = Object.keys(SKILLS).filter(id => !maxedSkills.has(id));
+  const available = Object.keys(SKILLS).filter(id => !maxed.has(id));
   if (available.length < 3) return;
   const picks = shuffle([...available]).slice(0, 3);
   sql('INSERT OR REPLACE INTO skill_offers(player_id,skill1,skill2,skill3) VALUES(?,?,?,?)').run(playerId, ...picks);
@@ -183,36 +182,45 @@ export function pickSkill(playerId, skillId) {
   });
 }
 
-// ── Combat ──
+// ── Ancestor (patron worship) + Class (cultivation path) ──
 
-function getTraitBonuses(player) {
-  const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
-  for (const src of [BLOODLINES[player.bloodline], PHYSIQUES[player.physique], TALENTS[player.talent], CLASSES[player.class]]) {
-    if (src?.bonus) for (const s in src.bonus) if (s in b) b[s] += src.bonus[s];
-  }
-  return b;
+export function setAncestor(playerId, ancestorId) {
+  if (!ANCESTORS[ancestorId]) return { success: false, error: 'Unknown ancestor' };
+  upd(playerId, { ancestor: ancestorId, ancestor_favor: 0 }); // switching resets favor
+  return { success: true, ancestor: ANCESTORS[ancestorId] };
 }
 
-export function getAncestorBoons(player) {
+export function setClass(playerId, classId) {
+  if (!CLASSES[classId]) return { success: false, error: 'Unknown cultivation path' };
+  upd(playerId, { class: classId });
+  return { success: true, class: CLASSES[classId] };
+}
+
+function getAncestorBoons(player) {
   const ancestor = ANCESTORS[player.ancestor];
-  if (!ancestor) return { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
   const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
+  if (!ancestor) return b;
   for (const boon of ancestor.boons) {
     if (player.ancestor_favor >= boon.favor) for (const s in boon.bonus) if (s in b) b[s] += boon.bonus[s];
   }
   return b;
 }
 
+// ── Combat ──
+
 function getEffectiveStats(playerId) {
-  const player = getPlayer(playerId), bonuses = getEquipmentBonuses(playerId);
-  const traitBonus = getTraitBonuses(player);
-  const ancestorBonus = getAncestorBoons(player);
+  const player = getPlayer(playerId);
+  const eq = getEquipmentBonuses(playerId);
+  const cls = CLASSES[player.class]?.bonus || {};
+  const anc = getAncestorBoons(player);
+  const get = k => (cls[k] || 0);
   return {
-    hp: player.hp, max_hp: player.max_hp + bonuses.hp + traitBonus.hp + ancestorBonus.hp,
-    attack: player.attack + bonuses.attack + traitBonus.attack + ancestorBonus.attack,
-    defense: player.defense + bonuses.defense + traitBonus.defense + ancestorBonus.defense,
-    speed: player.speed + bonuses.speed + traitBonus.speed + ancestorBonus.speed,
-    strength: player.strength + bonuses.strength + traitBonus.strength + ancestorBonus.strength,
+    hp: player.hp,
+    max_hp: player.max_hp + eq.hp + get('hp') + anc.hp,
+    attack: player.attack + eq.attack + get('attack') + anc.attack,
+    defense: player.defense + eq.defense + get('defense') + anc.defense,
+    speed: player.speed + eq.speed + get('speed') + anc.speed,
+    strength: player.strength + eq.strength + get('strength') + anc.strength,
   };
 }
 
@@ -241,37 +249,29 @@ function simulate(attacker, defender, attackerLevels, defenderLevels) {
       const mySide = isAttacker ? 'attacker' : 'defender';
       const foeSide = isAttacker ? 'defender' : 'attacker';
 
-      // Regeneration
       const regenLevel = readLevel(myLevels, 'regeneration');
       if (regenLevel) { myHp = Math.min(myMaxHp, myHp + (myMaxHp * regenLevel * .05 | 0)); if (isAttacker) attackerHp = myHp; else defenderHp = myHp; }
 
-      // Dodge
       const dodgeLevel = readLevel(foeLevels, 'dodge_master');
       if (dodgeLevel && Math.random() < dodgeLevel * .12) { log.push({ text: '💨 Dodged!', side: foeSide }); continue; }
 
-      // Berserker rage
       const berserkLevel = readLevel(myLevels, 'berserker_rage');
       if (berserkLevel && myHp / myMaxHp < .3) myAtk = myAtk * berserkLevel * 1.5 | 0;
 
-      // Base damage with variance
       let damage = Math.max(1, myAtk - (foeDef * .6 | 0));
       damage = damage * (.85 + Math.random() * .3) | 0;
 
-      // Critical hit
       let isCrit = false;
       const critLevel = readLevel(myLevels, 'critical_eye');
       if (critLevel && Math.random() < critLevel * .15) { damage = damage * 2 | 0; isCrit = true; }
 
-      // Iron wall damage reduction
       const wallLevel = readLevel(foeLevels, 'iron_wall');
       if (wallLevel) damage = Math.max(1, damage * (1 - wallLevel * .1) | 0);
 
-      // Apply damage
       foeHp -= damage;
       if (isAttacker) defenderHp = foeHp; else attackerHp = foeHp;
       log.push({ text: `${isCrit ? '💥 ' : ''}${damage} dmg`, side: mySide });
 
-      // Double strike
       const doubleLevel = readLevel(myLevels, 'double_strike');
       if (doubleLevel && Math.random() < doubleLevel * .2) {
         const bonusDmg = Math.max(1, damage * .6 | 0);
@@ -290,36 +290,32 @@ function simulate(attacker, defender, attackerLevels, defenderLevels) {
   };
 }
 
-function executeCombat(playerId, foe, lootFn) {
+function executeCombat(playerId, foe) {
   const player = getPlayer(playerId);
   if (player.stamina < foe.cost) return { success: false, error: 'Not enough stamina' };
-  const stats = getEffectiveStats(playerId);
   const skillLevels = getSkillLevelMap(playerId);
-  const result = simulate(stats, foe.stats, skillLevels, foe.skills || {});
+  const result = simulate(getEffectiveStats(playerId), foe.stats, skillLevels, {});
   const won = result.winner === 'attacker';
-  const goldSkillBonus = readLevel(skillLevels, 'gold_digger');
-  const goldMultiplier = 1 + (goldSkillBonus ? goldSkillBonus * .2 : 0);
+  const goldMult = 1 + readLevel(skillLevels, 'gold_digger') * .2;
   const earnedXp = won ? randBetween(...foe.xpRange) : randBetween(...foe.xpRange) * .25 | 0;
-  const earnedGold = won ? (randBetween(...foe.goldRange) * goldMultiplier | 0) : 0;
-  const lootDrop = won && lootFn ? lootFn(player.level) : null;
+  const earnedGold = won ? (randBetween(...foe.goldRange) * goldMult | 0) : 0;
+  const lootDrop = won ? rollLoot(player.level) : null;
 
   return tx(() => {
-    const newHp = player.max_hp; // always full HP between fights
     const updates = {
-      stamina: floorZero(player.stamina - foe.cost), hp: newHp,
+      stamina: floorZero(player.stamina - foe.cost),
+      hp: player.max_hp, // always full between fights
       gold: floorZero(player.gold + earnedGold),
       total_gold_earned: player.total_gold_earned + earnedGold,
       total_xp_earned: player.total_xp_earned + earnedXp,
+      [won ? 'wins' : 'losses']: player[won ? 'wins' : 'losses'] + 1,
     };
-    updates[won ? 'wins' : 'losses'] = player[won ? 'wins' : 'losses'] + 1;
     if (won) updates.ancestor_favor = player.ancestor_favor + 1;
     upd(playerId, updates);
     if (lootDrop) sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, lootDrop);
     const xpResult = addXp(playerId, earnedXp);
-    sql('INSERT INTO combat_log(player_id,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?)')
-      .run(playerId, foe.name, won ? 1 : 0, result.damageDealt, result.damageTaken, earnedGold, earnedXp, lootDrop);
     const autoEquipped = lootDrop ? autoEquipIfBetter(playerId, lootDrop) : null;
-    return { success: true, won, combat: result, gold: earnedGold, xp: xpResult.xp, lootItem: lootDrop ? EQUIPMENT[lootDrop] : null, autoEquipped, leveled: xpResult.leveled, newLevel: xpResult.newLevel, foe };
+    return { success: true, won, gold: earnedGold, xp: xpResult.xp, lootItem: lootDrop ? EQUIPMENT[lootDrop] : null, autoEquipped, leveled: xpResult.leveled, newLevel: xpResult.newLevel, foe };
   });
 }
 
@@ -327,148 +323,60 @@ export function fightEnemy(playerId, enemyId) {
   const player = getPlayer(playerId), config = ENEMIES[enemyId];
   if (!config) return { success: false, error: 'Unknown enemy' };
   if (player.level < config.minLevel) return { success: false, error: `Need level ${config.minLevel}` };
-  const scaleFactor = config.scaling ** Math.max(0, player.level - config.minLevel);
+  const scale = config.scaling ** Math.max(0, player.level - config.minLevel);
   return executeCombat(playerId, {
     name: config.name, cost: ZONES[config.zone]?.staminaCost || 1,
-    stats: { hp: config.baseHp * scaleFactor | 0, max_hp: config.baseHp * scaleFactor | 0, attack: config.baseAtk * scaleFactor | 0, defense: config.baseDef * scaleFactor | 0, speed: config.baseSpd * scaleFactor | 0, strength: 0 },
+    stats: { hp: config.baseHp * scale | 0, max_hp: config.baseHp * scale | 0, attack: config.baseAtk * scale | 0, defense: config.baseDef * scale | 0, speed: config.baseSpd * scale | 0, strength: 0 },
     xpRange: config.xp, goldRange: config.gold,
-  }, rollLoot);
+  });
 }
 
 // ── Loot ──
 
-const BASE_RARITY_WEIGHTS = Object.fromEntries(Object.entries(RARITIES).map(([rarity, data]) => [rarity, data.weight]));
+const BASE_RARITY_WEIGHTS = Object.fromEntries(Object.entries(RARITIES).map(([r, d]) => [r, d.weight]));
 
 function rollLoot(playerLevel) {
   if (Math.random() > .3) return null;
-  let totalWeight = 0; for (const weight of Object.values(BASE_RARITY_WEIGHTS)) totalWeight += weight;
-  let roll = Math.random() * totalWeight, rolledRarity = 'common';
-  for (const [rarity, weight] of Object.entries(BASE_RARITY_WEIGHTS)) { roll -= weight; if (roll <= 0) { rolledRarity = rarity; break; } }
-  const candidates = Object.entries(EQUIPMENT).filter(([, item]) => item.rarity === rolledRarity && item.dropLevel <= playerLevel + 2);
+  let total = 0; for (const w of Object.values(BASE_RARITY_WEIGHTS)) total += w;
+  let roll = Math.random() * total, rolled = 'common';
+  for (const [r, w] of Object.entries(BASE_RARITY_WEIGHTS)) { roll -= w; if (roll <= 0) { rolled = r; break; } }
+  const candidates = Object.entries(EQUIPMENT).filter(([, item]) => item.rarity === rolled && item.dropLevel <= playerLevel + 2);
   return candidates.length ? candidates[randBetween(0, candidates.length - 1)][0] : null;
 }
 
-// ── Networth ──
-
-export function updateNetworth(playerId) {
-  const player = getPlayer(playerId);
-  let equipValue = 0;
-  for (const row of getAllEquipment(playerId)) equipValue += EQUIPMENT[row.item_id]?.sellValue || 0;
-  const networth = floorZero(player.gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level);
-  upd(playerId, { networth, peak_networth: Math.max(networth, player.peak_networth) });
-  return networth;
-}
-
-export const getRecentLog = (playerId, limit = 5) => sql('SELECT * FROM combat_log WHERE player_id=? ORDER BY timestamp DESC LIMIT ?').all(playerId, limit);
-export const getLeaderboard = (limit = 10) => sql('SELECT id,username,networth,level FROM players ORDER BY networth DESC LIMIT ?').all(limit);
-export function getRank(playerId) {
-  const row = sql('SELECT COUNT(*) + 1 AS rank FROM players WHERE networth > (SELECT networth FROM players WHERE id=?)').get(playerId);
-  return row?.rank || 99;
-}
-
-// Auto-equip if loot is stronger than current slot occupant
-export function autoEquipIfBetter(playerId, itemId) {
-  const config = EQUIPMENT[itemId];
-  if (!config) return null;
-  const equipped = getEquippedItems(playerId);
-  const currentInSlot = equipped.find(row => EQUIPMENT[row.item_id]?.slot === config.slot);
-  const currentConfig = currentInSlot ? EQUIPMENT[currentInSlot.item_id] : null;
-  const totalStats = stats => Object.values(stats).reduce((sum, val) => sum + val, 0);
-  if (!currentConfig || totalStats(config.stats) > totalStats(currentConfig.stats)) {
-    const newRow = sql('SELECT id FROM equipment WHERE player_id=? AND item_id=? AND equipped=0 ORDER BY id DESC LIMIT 1').get(playerId, itemId);
-    if (newRow) { equipItem(playerId, newRow.id); return config; }
-  }
-  return null;
-}
-
-// Sell all unequipped items of a given rarity (or below)
-export function sellAllJunk(playerId, maxRarity = 'common') {
-  const rarityTier = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
-  const maxTier = rarityTier[maxRarity] ?? 0;
-  const items = getAllEquipment(playerId).filter(row => {
-    if (row.equipped) return false;
-    const config = EQUIPMENT[row.item_id];
-    return config && (rarityTier[config.rarity] ?? 0) <= maxTier;
-  });
-  if (!items.length) return { success: false, error: 'Nothing to sell' };
-  return tx(() => {
-    let totalGold = 0;
-    for (const row of items) {
-      const config = EQUIPMENT[row.item_id];
-      totalGold += (config.sellValue * ECO.sellMult) | 0;
-      sql('DELETE FROM equipment WHERE id=?').run(row.id);
-    }
-    const player = getPlayer(playerId);
-    upd(playerId, { gold: floorZero(player.gold + totalGold) });
-    return { success: true, gold: totalGold, count: items.length };
-  });
-}
-
-// Best available enemy for quick-fight
+// Best available enemy for the player's current level
 export function bestEnemy(playerId) {
   const player = getPlayer(playerId);
   let best = null;
-  for (const [id, config] of Object.entries(ENEMIES)) {
-    if (player.level >= config.minLevel) best = id;
-  }
+  for (const [id, config] of Object.entries(ENEMIES)) if (player.level >= config.minLevel) best = id;
   return best;
 }
 
-// Bulk fight — fight N times, return aggregated results
-export function bulkFight(playerId, enemyId, count) {
-  const results = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], levelsGained: 0, startLevel: getPlayer(playerId).level };
-  for (let i = 0; i < count; i++) {
-    const result = fightEnemy(playerId, enemyId);
-    if (!result.success) { results.stoppedReason = result.error; break; }
-    if (result.won) results.wins++; else results.losses++;
-    results.goldEarned += result.gold;
-    results.xpEarned += result.xp;
-    if (result.lootItem) results.loot.push(result.lootItem);
-    if (result.leveled) results.levelsGained += result.newLevel - (results.startLevel + results.levelsGained);
-  }
-  results.endLevel = getPlayer(playerId).level;
-  return results;
-}
-
-// ── Ancestor (patron worship) ──
-
-export function setAncestor(playerId, ancestorId) {
-  if (!ANCESTORS[ancestorId]) return { success: false, error: 'Unknown ancestor' };
-  upd(playerId, { ancestor: ancestorId, ancestor_favor: 0 }); // switching resets favor
-  return { success: true, ancestor: ANCESTORS[ancestorId] };
-}
-
-export function setClass(playerId, classId) {
-  if (!CLASSES[classId]) return { success: false, error: 'Unknown cultivation path' };
-  upd(playerId, { class: classId });
-  return { success: true, class: CLASSES[classId] };
-}
-
-// ── GRIND — core loop: fight, sell junk ──
+// ── GRIND — core loop: 5 fights, auto-sell junk ──
 
 export function grind(playerId) {
   regenStamina(playerId);
-  const before = getPlayer(playerId);
-  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: getPlayer(playerId).level, stoppedReason: null };
 
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
-    const bulk = bulkFight(playerId, enemyId, 5);
-    result.wins = bulk.wins; result.losses = bulk.losses;
-    result.goldEarned = bulk.goldEarned; result.xpEarned = bulk.xpEarned;
-    result.loot = bulk.loot; result.stoppedReason = bulk.stoppedReason;
-    if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
+    const startLevel = getPlayer(playerId).level;
+    for (let i = 0; i < 5; i++) {
+      const r = fightEnemy(playerId, enemyId);
+      if (!r.success) { result.stoppedReason = r.error; break; }
+      if (r.won) result.wins++; else result.losses++;
+      result.goldEarned += r.gold;
+      result.xpEarned += r.xp;
+      if (r.lootItem) result.loot.push(r.lootItem);
+    }
+    const endLevel = getPlayer(playerId).level;
+    if (endLevel > startLevel) { result.leveled = true; result.newLevel = endLevel; }
   }
 
-
   const junk = sellAllJunk(playerId, 'common');
-  if (junk.success) { result.junkGold = junk.gold; result.junkCount = junk.count; }
+  if (junk.success) { result.goldEarned += junk.gold; }
 
-  updateNetworth(playerId);
-  const after = getPlayer(playerId);
-  result.afterNetworth = after.networth;
-  result.afterGold = after.gold;
   result.player = getPlayer(playerId);
-  result.xpPercent = after.xp / after.xp_needed;
+  result.xpPercent = result.player.xp / result.player.xp_needed;
   return result;
 }

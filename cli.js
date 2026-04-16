@@ -33,7 +33,7 @@ if (gameCommands.has(cmd)) {
     mkdirSync('data/sim', { recursive: true });
     getDb();
     P.getOrCreatePlayer('sim', 'SimPlayer');
-    console.log(' #   LVL  GOLD     NET      IMAGE');
+    console.log(' #   LVL  GOLD     W/L      IMAGE');
     console.log('───  ───  ───────  ───────  ─────');
     for (let i = 0; i < count; i++) {
       const result = P.grind('sim');
@@ -44,13 +44,13 @@ if (gameCommands.has(cmd)) {
         `${String(i + 1).padStart(3)}  ` +
         `${String(p.level).padStart(3)}  ` +
         `${String(p.gold).padStart(7)}  ` +
-        `${String(p.networth).padStart(7)}  ` +
+        `${String(p.wins).padStart(3)}/${String(p.losses).padEnd(3)}  ` +
         grindFile
       );
     }
     const final = P.getPlayer('sim');
     writeFileSync('data/sim/final_card.jpg', renderCard(final));
-    console.log(`\nFinal: Lv.${final.level} | ${final.gold}g | ${final.networth} net`);
+    console.log(`\nFinal: Lv.${final.level} | ${final.gold}g | ${final.wins}W ${final.losses}L`);
     getDb().close();
 
   } else if (cmd === 'card') {
@@ -81,11 +81,11 @@ if (gameCommands.has(cmd)) {
     const P = await import('./src/core/player.js');
     const db = getDb();
     if (!playerId) {
-      const players = db.prepare('SELECT id, username, level, gold, networth FROM players ORDER BY networth DESC').all();
+      const players = db.prepare('SELECT id, username, level, gold, wins, losses FROM players ORDER BY level DESC, gold DESC').all();
       if (!players.length) { console.log('No players.'); }
       else {
-        console.log('ID'.padEnd(20) + 'NAME'.padEnd(16) + 'LVL'.padStart(4) + 'GOLD'.padStart(10) + 'NET'.padStart(10));
-        for (const p of players) console.log(p.id.padEnd(20) + p.username.padEnd(16) + String(p.level).padStart(4) + String(p.gold).padStart(10) + String(p.networth).padStart(10));
+        console.log('ID'.padEnd(20) + 'NAME'.padEnd(16) + 'LVL'.padStart(4) + 'GOLD'.padStart(10) + 'W/L'.padStart(10));
+        for (const p of players) console.log(p.id.padEnd(20) + p.username.padEnd(16) + String(p.level).padStart(4) + String(p.gold).padStart(10) + `${p.wins}/${p.losses}`.padStart(10));
       }
     } else {
       const p = P.getPlayer(playerId);

@@ -99,7 +99,6 @@ const EN = [
 export const ENEMIES = Object.fromEntries(EN.map(([id,name,icon,zone,baseHp,baseAtk,baseDef,baseSpd,scaling,xp,gold,minLevel]) =>
   [id, Object.freeze({ name, icon, zone, baseHp, baseAtk, baseDef, baseSpd, scaling, xp, gold, minLevel })]));
 
-
 export const ZONES = Object.freeze({
   neighborhood: { name: 'Mortal Village',     icon: '🏘️', minLevel: 1,  staminaCost: 1 },
   downtown:     { name: 'Misty Forest',       icon: '🌲', minLevel: 5,  staminaCost: 2 },
@@ -109,63 +108,18 @@ export const ZONES = Object.freeze({
 
 export const LEVEL = Object.freeze({ xpBase: 80, xpMult: 1.3, hp: 12, atk: 2, def: 1, spd: 1, str: 1 });
 
-export const ECO = Object.freeze({
-  startGold: 100, maxStamina: 10, staminaRegen: 300, sellMult: 0.4,
-  networth: Object.freeze({ gold: 1, equip: 1.5, level: 100 }),
-});
+export const ECO = Object.freeze({ startGold: 100, maxStamina: 10, staminaRegen: 300, sellMult: 0.4 });
 
 export const CANVAS = Object.freeze({ width: 800, height: 500 });
 
-// ── Cultivation Realms — display title based on level ──
-export const REALMS = Object.freeze([
-  { maxLevel: 4,        name: 'Mortal',                   icon: '🧑' },
-  { maxLevel: 9,        name: 'Martial Artist',           icon: '🥋' },
-  { maxLevel: 14,       name: 'Qi Condensation',          icon: '✨' },
-  { maxLevel: 19,       name: 'Foundation Establishment',  icon: '🏗️' },
-  { maxLevel: Infinity, name: 'Golden Core',              icon: '🌟' },
-]);
-export function getRealm(level) {
-  for (const r of REALMS) if (level <= r.maxLevel) return r;
-  return REALMS[REALMS.length - 1];
-}
-
-// ── Bloodlines — randomized at character creation ──
-export const BLOODLINES = Object.freeze({
-  dragon:   { name: 'Dragon Blood',         icon: '🐉', bonus: { strength: 3 },              weight: 5 },
-  phoenix:  { name: 'Phoenix Lineage',      icon: '🔥', bonus: { speed: 3 },                 weight: 5 },
-  tiger:    { name: 'White Tiger Clan',     icon: '🐯', bonus: { attack: 2 },                weight: 15 },
-  tortoise: { name: 'Black Tortoise Line',  icon: '🐢', bonus: { defense: 2 },               weight: 15 },
-  serpent:  { name: 'Jade Serpent Heritage', icon: '🐍', bonus: { hp: 10 },                   weight: 15 },
-  common:   { name: 'Ordinary Bloodline',   icon: '🩸', bonus: {},                            weight: 45 },
-});
-
-// ── Physiques — randomized at character creation ──
-export const PHYSIQUES = Object.freeze({
-  heavenly: { name: 'Heavenly Spirit Body', icon: '✨', bonus: { hp: 15, strength: 1 },      weight: 5 },
-  iron:     { name: 'Iron Bone Physique',   icon: '🦴', bonus: { defense: 2 },                weight: 15 },
-  wind:     { name: 'Wind Spirit Body',     icon: '💨', bonus: { speed: 2 },                  weight: 15 },
-  flame:    { name: 'Flame Meridians',      icon: '🔥', bonus: { attack: 2 },                 weight: 15 },
-  ordinary: { name: 'Ordinary Physique',    icon: '🧘', bonus: {},                            weight: 50 },
-});
-
-// ── Talents — randomized at character creation ──
-export const TALENTS = Object.freeze({
-  sword:    { name: 'Sword Prodigy',              icon: '⚔️', bonus: { attack: 3 },           weight: 8 },
-  shield:   { name: 'Shield Master',              icon: '🛡️', bonus: { defense: 3 },          weight: 8 },
-  spirit:   { name: 'Spirit Sense',               icon: '👁️', bonus: { speed: 3 },            weight: 8 },
-  body:     { name: 'Body Cultivation Genius',     icon: '💪', bonus: { strength: 3 },         weight: 8 },
-  balanced: { name: 'Balanced Foundation',         icon: '☯️', bonus: { attack: 1, defense: 1, speed: 1, strength: 1 }, weight: 18 },
-  dull:     { name: 'Dull Roots',                  icon: '🪨', bonus: {},                      weight: 50 },
-});
-
-// ── Classes (Three Paths of Cultivation) — player-chosen ──
+// ── Classes (Three Paths of Cultivation) — player-chosen, stat-shape choice ──
 export const CLASSES = Object.freeze({
   sword: { name: 'Sword Path', icon: '⚔️', desc: 'Masters of the blade — fast, precise, lethal', bonus: { attack: 4, speed: 1 } },
   body:  { name: 'Body Path',  icon: '💪', desc: 'Tempered flesh — unbreakable will', bonus: { defense: 2, hp: 25, strength: 2 } },
   qi:    { name: 'Qi Path',    icon: '✨', desc: 'Spiritual masters — guided by flowing energy', bonus: { speed: 3, strength: 2 } },
 });
 
-// ── Ancestors — patron worship, build favor for boons ──
+// ── Ancestors — patron worship, build favor from wins + level-ups for boons ──
 export const ANCESTORS = Object.freeze({
   azure_dragon: {
     name: 'Azure Dragon', icon: '🐉', bg: '#0a1a2e', accent: '#38bdf8', pattern: 'wave',
@@ -213,15 +167,3 @@ export const ANCESTORS = Object.freeze({
     ]),
   },
 });
-
-
-// ── Networth frame tiers — card border color by wealth ──
-export const FRAME_TIERS = Object.freeze([
-  { min: 0,        color: '#52525b', label: 'Mortal' },
-  { min: 1000,     color: '#a1a1aa', label: 'Spirit' },
-  { min: 10000,    color: '#f5c542', label: 'Golden Core' },
-  { min: 100000,   color: '#38bdf8', label: 'Nascent Soul' },
-  { min: 1000000,  color: '#a78bfa', label: 'Immortal' },
-  { min: 10000000, color: '#fb923c', label: 'Celestial Emperor' },
-]);
-

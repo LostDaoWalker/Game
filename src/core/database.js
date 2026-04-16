@@ -5,10 +5,13 @@ let db;
 const stmtCache = new Map();
 const updCache = new Map();
 
+// Columns that existed in older schemas and should be dropped
 const DEAD_COLUMNS = [
   'banked_gold', 'daily_streak', 'last_daily', 'win_streak', 'best_streak',
-  'milestones', 'pvp_wins', 'pvp_losses', 'raids_completed', 'bosses_killed', 'avatar',
+  'milestones', 'pvp_wins', 'pvp_losses', 'raids_completed', 'bosses_killed',
+  'avatar', 'bloodline', 'physique', 'talent', 'networth', 'peak_networth',
 ];
+const DEAD_TABLES = ['assets', 'crew', 'combat_log'];
 
 export function getDb() {
   if (db) return db;
@@ -35,12 +38,7 @@ export function getDb() {
       max_stamina INTEGER NOT NULL DEFAULT 10,
       stamina_regen_at INTEGER NOT NULL DEFAULT (unixepoch()),
       wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
-      networth INTEGER NOT NULL DEFAULT 100 CHECK(networth >= 0),
-      peak_networth INTEGER NOT NULL DEFAULT 100,
       pending_skill_picks INTEGER NOT NULL DEFAULT 0 CHECK(pending_skill_picks >= 0),
-      bloodline TEXT NOT NULL DEFAULT 'common',
-      physique TEXT NOT NULL DEFAULT 'ordinary',
-      talent TEXT NOT NULL DEFAULT 'dull',
       ancestor TEXT NOT NULL DEFAULT 'azure_dragon',
       ancestor_favor INTEGER NOT NULL DEFAULT 0,
       class TEXT NOT NULL DEFAULT 'sword'
@@ -59,18 +57,6 @@ export function getDb() {
       level INTEGER NOT NULL DEFAULT 1 CHECK(level >= 1),
       UNIQUE(player_id, skill_id)
     );
-    CREATE TABLE IF NOT EXISTS combat_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      player_id TEXT NOT NULL,
-      opponent_name TEXT NOT NULL,
-      won INTEGER NOT NULL CHECK(won IN (0, 1)),
-      damage_dealt INTEGER NOT NULL DEFAULT 0,
-      damage_taken INTEGER NOT NULL DEFAULT 0,
-      gold_earned INTEGER NOT NULL DEFAULT 0,
-      xp_earned INTEGER NOT NULL DEFAULT 0,
-      loot_item TEXT,
-      timestamp INTEGER NOT NULL DEFAULT (unixepoch())
-    );
     CREATE TABLE IF NOT EXISTS skill_offers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       player_id TEXT NOT NULL REFERENCES players(id),
@@ -79,24 +65,17 @@ export function getDb() {
     );
     CREATE INDEX IF NOT EXISTS idx_eq_pid ON equipment(player_id);
     CREATE INDEX IF NOT EXISTS idx_sk_pid ON skills(player_id);
-    CREATE INDEX IF NOT EXISTS idx_cl_pid ON combat_log(player_id);
-    CREATE INDEX IF NOT EXISTS idx_nw ON players(networth DESC);
   `);
 
   // Migrations for existing DBs
   const cols = new Set(db.pragma('table_info(players)').map(c => c.name));
-  // Add cultivation columns if missing (old installs)
-  if (!cols.has('bloodline'))      db.exec("ALTER TABLE players ADD COLUMN bloodline TEXT NOT NULL DEFAULT 'common'");
-  if (!cols.has('physique'))       db.exec("ALTER TABLE players ADD COLUMN physique TEXT NOT NULL DEFAULT 'ordinary'");
-  if (!cols.has('talent'))         db.exec("ALTER TABLE players ADD COLUMN talent TEXT NOT NULL DEFAULT 'dull'");
   if (!cols.has('ancestor'))       db.exec("ALTER TABLE players ADD COLUMN ancestor TEXT NOT NULL DEFAULT 'azure_dragon'");
   if (!cols.has('ancestor_favor')) db.exec("ALTER TABLE players ADD COLUMN ancestor_favor INTEGER NOT NULL DEFAULT 0");
   if (!cols.has('class'))          db.exec("ALTER TABLE players ADD COLUMN class TEXT NOT NULL DEFAULT 'sword'");
-  // Drop dead columns from old installs
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
-  // Drop dead tables
-  db.exec('DROP TABLE IF EXISTS assets');
-  db.exec('DROP TABLE IF EXISTS crew');
+  for (const t of DEAD_TABLES) db.exec(`DROP TABLE IF EXISTS ${t}`);
+  db.exec('DROP INDEX IF EXISTS idx_cl_pid');
+  db.exec('DROP INDEX IF EXISTS idx_nw');
   db.exec('DROP INDEX IF EXISTS idx_assets_pid');
   db.exec('DROP INDEX IF EXISTS idx_crew_pid');
 

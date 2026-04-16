@@ -5,10 +5,9 @@ import { renderGrind } from '../rendering/views/grind.js';
 
 function renderView(playerId, extra) {
   Player.regenStamina(playerId);
-  Player.updateNetworth(playerId);
   const player = extra?.player || Player.getPlayer(playerId);
   if (!player) return null;
-  return renderGrind(player, extra || { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: player.level, beforeNetworth: player.networth, afterNetworth: player.networth, xpPercent: player.xp / player.xp_needed, player });
+  return renderGrind(player, extra || { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: player.level, xpPercent: player.xp / player.xp_needed, player });
 }
 
 function formatGrindResult(result) {

@@ -11,36 +11,23 @@ export function renderGrind(player, result) {
   const ctx = canvas.getContext('2d');
   ctx.textBaseline = 'top';
 
-  // Dark background
   ctx.fillStyle = '#09090b';
   ctx.fillRect(0, 0, GW, GH);
 
-  // ── Card (top, centered) ──
-  const card = drawCard(ctx, GW / 2, 260, player);
+  drawCard(ctx, GW / 2, 260, player);
 
-  // ── Results (below card) ──
-  const ry = 520;
   const pad = 24;
+  let cy = 524;
 
-  // Networth before → after
-  const delta = result.afterNetworth - result.beforeNetworth;
-  R.txt(ctx, `${R.fmt(result.beforeNetworth)}`, pad, ry, { s: 14, c: C.textMuted });
-  R.txt(ctx, '→', pad + 80, ry, { s: 14, c: C.textDim });
-  R.txt(ctx, `${R.fmt(result.afterNetworth)}`, pad + 100, ry, { s: 14, b: true, c: card.frameColor });
-  if (delta > 0) R.txt(ctx, `+${R.fmt(delta)}`, GW - pad, ry, { s: 14, b: true, c: C.success, a: 'right' });
+  // Combat + earnings
+  R.txt(ctx, `${result.wins}W/${result.losses}L`, pad, cy, { s: 13, c: result.losses === 0 ? C.success : C.text });
+  R.txt(ctx, `+${R.fmt(result.goldEarned)}g`, pad + 90, cy, { s: 13, c: C.gold });
+  R.txt(ctx, `+${R.fmt(result.xpEarned)}xp`, pad + 180, cy, { s: 13, c: C.xpBar });
+  cy += 24;
 
-  // Combat + earnings on one line
-  let cy = ry + 26;
-  R.txt(ctx, `${result.wins}W/${result.losses}L`, pad, cy, { s: 12, c: result.losses === 0 ? C.success : C.text });
-  R.txt(ctx, `+${R.fmt(result.goldEarned)}g`, pad + 80, cy, { s: 12, c: C.gold });
-  R.txt(ctx, `+${R.fmt(result.xpEarned)}xp`, pad + 160, cy, { s: 12, c: C.xpBar });
-  cy += 22;
+  if (result.leveled) { R.txt(ctx, `LEVEL UP → Lv.${result.newLevel}`, pad, cy, { s: 14, b: true, c: C.accent }); cy += 22; }
 
-  // Level up
-  if (result.leveled) { R.txt(ctx, `LEVEL UP → Lv.${result.newLevel}`, pad, cy, { s: 14, b: true, c: C.accent }); cy += 20; }
-
-  // Loot
-  for (const item of result.loot.slice(0, 2)) {
+  for (const item of result.loot.slice(0, 3)) {
     const pre = item.rarity === 'legendary' ? '🌟 ' : item.rarity === 'epic' ? '✨ ' : '';
     R.txt(ctx, `${pre}${item.icon} ${item.name}`, pad, cy, { s: 11, c: R.rarityColor(item.rarity) });
     cy += 16;

@@ -1,16 +1,11 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { ANCESTORS, FRAME_TIERS, CLASSES, getRealm } from '../../core/config.js';
+import { ANCESTORS, CLASSES } from '../../core/config.js';
 import * as R from '../canvas.js';
 
 const CARD_W = 350, CARD_H = 490;
+const FRAME = '#52525b';
 
-function getFrame(networth) {
-  let color = FRAME_TIERS[0].color, label = FRAME_TIERS[0].label;
-  for (const tier of FRAME_TIERS) if (networth >= tier.min) { color = tier.color; label = tier.label; }
-  return { color, label };
-}
-
-// ── Full-bleed avatar art cache ──
+// ── Ancestor art cache — one canvas per ancestor pattern ──
 const _artCache = new Map();
 function getAncestorArt(ancestorId) {
   let cached = _artCache.get(ancestorId);
@@ -23,13 +18,10 @@ function getAncestorArt(ancestorId) {
   const W = CARD_W, H = CARD_H;
   const patterns = {
     diamond: () => { for (let y = 0; y < H; y += 30) for (let x = 0; x < W; x += 30) { ctx.save(); ctx.translate(x + 15, y + 15); ctx.rotate(Math.PI / 4); ctx.fillRect(-8, -8, 16, 16); ctx.restore(); } },
-    grid: () => { for (let y = 0; y < H; y += 20) ctx.fillRect(0, y, W, 1); for (let x = 0; x < W; x += 20) ctx.fillRect(x, 0, 1, H); },
-    bars: () => { for (let y = 0; y < H; y += 12) ctx.fillRect(0, y, W, 6); },
     cross: () => { for (let y = 0; y < H; y += 40) for (let x = 0; x < W; x += 40) { ctx.fillRect(x + 15, y, 10, 40); ctx.fillRect(x, y + 15, 40, 10); } },
     dots: () => { for (let y = 0; y < H; y += 24) for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.arc(x + 12, y + 12, 5, 0, Math.PI * 2); ctx.fill(); } },
     flame: () => { for (let y = 0; y < H; y += 20) { const w = Math.sin(y * 0.1) * 20; ctx.fillRect(w + W / 2 - 30, y, 60, 10); } },
     wave: () => { for (let y = 0; y < H; y += 4) { const w = Math.sin(y * 0.05) * 40; ctx.fillRect(W / 2 + w - 20, y, 40, 2); } },
-    stripe: () => { ctx.lineWidth = 4; ctx.strokeStyle = config.accent; for (let d = -H; d < W + H; d += 16) { ctx.beginPath(); ctx.moveTo(d, 0); ctx.lineTo(d - H, H); ctx.stroke(); } },
   };
   (patterns[config.pattern] || patterns.diamond)();
   ctx.globalAlpha = 1;
@@ -41,29 +33,28 @@ function getAncestorArt(ancestorId) {
 }
 
 export function drawCard(ctx, centerX, centerY, player) {
-  const { color: frameColor } = getFrame(player.networth);
   const x = centerX - CARD_W / 2, y = centerY - CARD_H / 2;
 
-  // Frame glow
-  ctx.shadowColor = frameColor; ctx.shadowBlur = 20;
-  ctx.strokeStyle = frameColor; ctx.lineWidth = 3;
+  // Frame
+  ctx.shadowColor = FRAME; ctx.shadowBlur = 20;
+  ctx.strokeStyle = FRAME; ctx.lineWidth = 3;
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Full-bleed art clipped to card
+  // Full-bleed ancestor art
   ctx.save();
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.clip();
   ctx.drawImage(getAncestorArt(player.ancestor), x, y);
 
-  // Top scrim for username + realm + class
+  // Top scrim
   const topScrim = ctx.createLinearGradient(x, y, x, y + 80);
   topScrim.addColorStop(0, 'rgba(0,0,0,.7)'); topScrim.addColorStop(1, 'transparent');
   ctx.fillStyle = topScrim; ctx.fillRect(x, y, CARD_W, 80);
 
-  // Bottom scrim for networth
-  const botScrim = ctx.createLinearGradient(x, y + CARD_H - 80, x, y + CARD_H);
+  // Bottom scrim
+  const botScrim = ctx.createLinearGradient(x, y + CARD_H - 70, x, y + CARD_H);
   botScrim.addColorStop(0, 'transparent'); botScrim.addColorStop(1, 'rgba(0,0,0,.7)');
-  ctx.fillStyle = botScrim; ctx.fillRect(x, y + CARD_H - 80, CARD_W, 80);
+  ctx.fillStyle = botScrim; ctx.fillRect(x, y + CARD_H - 70, CARD_W, 70);
 
   ctx.restore();
 
@@ -73,23 +64,19 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.textAlign = 'center';
   ctx.fillText(player.username, centerX, y + 14);
 
-  // Realm + class — just below username
-  const realm = getRealm(player.level);
+  // Level + class
   const cls = CLASSES[player.class] || CLASSES.sword;
   ctx.fillStyle = '#d4d4d8';
   ctx.font = "12px 'Courier New',monospace";
-  ctx.fillText(`${realm.icon} Lv.${player.level} ${realm.name}`, centerX, y + 38);
-  ctx.fillStyle = frameColor;
-  ctx.font = "bold 11px 'Courier New',monospace";
-  ctx.fillText(`${cls.icon} ${cls.name}`, centerX, y + 54);
+  ctx.fillText(`${cls.icon} Lv.${player.level} ${cls.name}`, centerX, y + 42);
 
-  // Networth — bottom center
-  ctx.fillStyle = frameColor;
-  ctx.font = "bold 36px 'Courier New',monospace";
-  ctx.fillText(R.fmt(player.networth), centerX, y + CARD_H - 46);
+  // Gold — bottom center
+  ctx.fillStyle = '#f5c542';
+  ctx.font = "bold 28px 'Courier New',monospace";
+  ctx.fillText(`${R.fmt(player.gold)}g`, centerX, y + CARD_H - 40);
   ctx.textAlign = 'left';
 
-  return { x, y, w: CARD_W, h: CARD_H, frameColor };
+  return { x, y, w: CARD_W, h: CARD_H };
 }
 
 export function renderCard(player) {
