@@ -10,7 +10,7 @@ function renderHome(player) {
   const v = P.getCultivationView(player);
   const lines = [
     `${v.realm.icon} **${v.realm.name} · ${v.stage.name} · ${v.stepName}**`,
-    `${bar(v.progress)} ${v.qi}/${v.qiCost}`,
+    `${bar(v.progress)} ${v.qi}/${v.qiCost} xp`,
   ];
   if (v.isFinalCap) lines.push('*(peak of the known path)*');
   return lines.join('\n');
