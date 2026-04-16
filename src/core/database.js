@@ -30,7 +30,7 @@ export function getDb() {
       prowess_rating INTEGER NOT NULL DEFAULT 1000,
       pvp_wins INTEGER NOT NULL DEFAULT 0,
       pvp_losses INTEGER NOT NULL DEFAULT 0,
-      face INTEGER NOT NULL DEFAULT 0
+      face INTEGER NOT NULL DEFAULT 0 CHECK(face >= 0)
     );
     CREATE TABLE IF NOT EXISTS talents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

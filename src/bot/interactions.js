@@ -199,7 +199,7 @@ function renderProfile(playerId) {
   lines.push('', '**Combat**');
   const power = P.getTotalPower(playerId);
   lines.push(`Power: ${power} · Prowess rating: ${player.prowess_rating} · ${player.pvp_wins}W / ${player.pvp_losses}L`);
-  lines.push(`🧘 Face: ${player.face >= 0 ? '+' : ''}${player.face}`);
+  lines.push(`🧘 Face: ${player.face}`);
 
   lines.push('', '**Stats**');
   lines.push(`Cultivation rate: ${stats.cultivationRate.toFixed(2)} xp/min` + (stats.rateBonusPct ? ` *(+${stats.rateBonusPct}% from talents)*` : ''));
@@ -274,7 +274,9 @@ export async function handleButton(interaction) {
   if (action === 'pvp') {
     const r = P.pvpFight(id);
     if (!r.success) { const player = P.getPlayer(id); return interaction.update({ content: `⚠️ ${r.error}\n\n${renderHome(player)}`, components: homeUI(player) }); }
-    const faceTxt = `${r.faceDelta >= 0 ? '+' : ''}${r.faceDelta} 🧘 face`;
+    const faceTxt = r.faceDelta > 0 ? `+${r.faceDelta} 🧘 face`
+                  : r.faceDelta < 0 ? `${r.faceDelta} 🧘 face`
+                  : '🧘 face untouched';
     const outcome = r.won
       ? `⚔️ **Defeated ${r.opponent.name}**${r.opponent.isAi ? ' *(AI)*' : ''} · +${r.stonesEarned} 💎 · ${faceTxt}`
       : `💔 Lost to **${r.opponent.name}**${r.opponent.isAi ? ' *(AI)*' : ''} · ${faceTxt}`;

@@ -396,19 +396,33 @@ ok('pvpFight returns an opponent',       !!fight1.opponent);
 ok('rating changes after fight',         fight1.ratingAfter !== 1000);
 ok('W/L counter updated',                P.getPlayer('fighter').pvp_wins + P.getPlayer('fighter').pvp_losses === 1);
 
-// Win awards 50 stones + 10 face; loss drops 10 face
+// Win awards 50 stones + 10 face; loss drops up to 10 face, never below 0
 const startStones = P.getPlayer('fighter').spirit_stones;
-const startFace = P.getPlayer('fighter').face;
 let wins = 0, losses = 0;
 for (let i = 0; i < 20; i++) {
   const r = P.pvpFight('fighter');
   if (r.won) wins++; else losses++;
+  ok('face never goes negative', P.getPlayer('fighter').face >= 0);
 }
 const endStones = P.getPlayer('fighter').spirit_stones;
-const endFace = P.getPlayer('fighter').face;
-ok('stones awarded only on wins',  endStones === startStones + wins * 50);
-ok('face +10 per win, -10 per loss', endFace === startFace + wins * 10 - losses * 10);
-ok('face can go negative on bad run', P.getPlayer('fighter').face !== null);
+ok('stones awarded only on wins', endStones === startStones + wins * 50);
+ok('face still within bounds at end', P.getPlayer('fighter').face >= 0);
+
+// Direct floor check: a loss when face=0 does not take face below zero
+sql('UPDATE players SET face=0 WHERE id=?').run('fighter');
+// Force-weak the player so they always lose; rig win-probability to ~0 by dropping stats.
+sql('UPDATE players SET realm=0, stage=0, step=0, prowess_bonus_pct=0 WHERE id=?').run('fighter');
+let sawLossAtZero = false;
+for (let i = 0; i < 40 && !sawLossAtZero; i++) {
+  sql('UPDATE players SET face=0 WHERE id=?').run('fighter');
+  const r = P.pvpFight('fighter');
+  if (!r.won) {
+    sawLossAtZero = true;
+    ok('losing at face=0 keeps face at 0', P.getPlayer('fighter').face === 0);
+    ok('faceDelta is 0 on loss when face=0', r.faceDelta === 0);
+  }
+}
+ok('observed a loss at face=0', sawLossAtZero);
 
 // Rankings: fighter shows up
 const rankings = P.getRankings(10);

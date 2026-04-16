@@ -161,7 +161,7 @@ function eloUpdate(myRating, oppRating, won) {
 
 function findOpponent(playerId, playerRating) {
   const lo = playerRating - PVP.ratingWindow, hi = playerRating + PVP.ratingWindow;
-  return sql('SELECT id, username, prowess_rating FROM players WHERE id != ? AND prowess_rating BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(playerId, lo, hi);
+  return sql('SELECT id, username, prowess_rating, face FROM players WHERE id != ? AND prowess_rating BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(playerId, lo, hi);
 }
 
 export function pvpFight(playerId) {
@@ -193,14 +193,15 @@ export function pvpFight(playerId) {
   const newMyRating = eloUpdate(myRating, oppRating, won);
   const ratingDelta = newMyRating - myRating;
   const stonesEarned = won ? PVP.stoneReward : 0;
-  const faceDelta = won ? PVP.faceWin : -PVP.faceLoss;
+  // Face floors at 0 — you can lose all of it but never owe face.
+  const faceDelta = won ? PVP.faceWin : -Math.min(PVP.faceLoss, player.face || 0);
 
   return tx(() => {
     sql(`UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, spirit_stones=spirit_stones+?, face=face+?, last_active=unixepoch() WHERE id=?`)
       .run(newMyRating, won ? 1 : 0, won ? 0 : 1, stonesEarned, faceDelta, playerId);
     if (realOpp) {
       const newOppRating = eloUpdate(oppRating, myRating, !won);
-      const oppFaceDelta = won ? -PVP.faceLoss : PVP.faceWin;
+      const oppFaceDelta = won ? -Math.min(PVP.faceLoss, realOpp.face || 0) : PVP.faceWin;
       sql('UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, face=face+? WHERE id=?')
         .run(newOppRating, won ? 0 : 1, won ? 1 : 0, oppFaceDelta, realOpp.id);
     }
