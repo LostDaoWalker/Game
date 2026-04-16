@@ -14,9 +14,28 @@ export function getDb() {
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL,
       created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      last_active INTEGER NOT NULL DEFAULT (unixepoch())
+      last_active INTEGER NOT NULL DEFAULT (unixepoch()),
+      realm INTEGER NOT NULL DEFAULT 0 CHECK(realm >= 0),
+      stage INTEGER NOT NULL DEFAULT 0 CHECK(stage >= 0),
+      step INTEGER NOT NULL DEFAULT 0 CHECK(step >= 0 AND step <= 7),
+      qi INTEGER NOT NULL DEFAULT 0 CHECK(qi >= 0),
+      cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      essence INTEGER NOT NULL DEFAULT 0 CHECK(essence >= 0),
+      tribulation_charge INTEGER NOT NULL DEFAULT 0 CHECK(tribulation_charge >= 0)
     );
   `);
+
+  // Additive migrations (safe to re-run)
+  const cols = new Set(db.pragma('table_info(players)').map(c => c.name));
+  const add = (name, ddl) => { if (!cols.has(name)) db.exec(`ALTER TABLE players ADD COLUMN ${name} ${ddl}`); };
+  add('realm',               "INTEGER NOT NULL DEFAULT 0");
+  add('stage',               "INTEGER NOT NULL DEFAULT 0");
+  add('step',                "INTEGER NOT NULL DEFAULT 0");
+  add('qi',                  "INTEGER NOT NULL DEFAULT 0");
+  add('cultivation_tick_at', "INTEGER NOT NULL DEFAULT (unixepoch())");
+  add('essence',             "INTEGER NOT NULL DEFAULT 0");
+  add('tribulation_charge',  "INTEGER NOT NULL DEFAULT 0");
+
   return db;
 }
 

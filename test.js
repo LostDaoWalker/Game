@@ -1,6 +1,7 @@
-// Smoke test — boots the DB, checks the schema compiles.
-// Expand as systems are added.
+// Smoke test — cultivation spine
 import { getDb, sql } from './src/core/database.js';
+import * as P from './src/core/player.js';
+import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP } from './src/core/config.js';
 import { rmSync, mkdirSync } from 'fs';
 
 let passed = 0, failed = 0;
@@ -11,11 +12,86 @@ mkdirSync('data', { recursive: true });
 
 const db = getDb();
 ok('db open', !!db);
-ok('players table exists', !!sql("SELECT name FROM sqlite_master WHERE type='table' AND name='players'").get());
 
-sql('INSERT INTO players(id,username) VALUES(?,?)').run('test', 'TestPlayer');
-const row = sql('SELECT * FROM players WHERE id=?').get('test');
-ok('insert+select round-trip', row?.username === 'TestPlayer');
+// ── Creation ──
+const player = P.getOrCreatePlayer('test', 'TestPlayer');
+ok('player created', player?.id === 'test');
+ok('starts Mortal',         player.realm === 0);
+ok('starts stage 0',        player.stage === 0);
+ok('starts Entry (step 0)', player.step === 0);
+ok('starts 0 qi',           player.qi === 0);
+ok('starts 0 essence',      player.essence === 0);
+ok('starts 0 charge',       player.tribulation_charge === 0);
+
+// ── Tick: no time elapsed ──
+sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run((Date.now() / 1000) | 0, 'test');
+const t0 = P.tickCultivation('test');
+ok('no-time tick = 0 qi', t0.qiGained === 0);
+
+// ── Tick: 1 hour of cultivation on Mortal (baseStepCost 5) ──
+// Step costs: 5, 7, 10, 15, 22, 45, 90, 180 → total to Peak = 59 qi
+sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
+const t1 = P.tickCultivation('test');
+ok('1h tick ≈ 60 qi gained', t1.qiGained === 60);
+const p1 = P.getPlayer('test');
+ok('pushed past Peak', p1.step >= BREAKTHROUGH_STEP);
+const v1 = P.getCultivationView(p1);
+ok('view says canBreakthrough', v1.canBreakthrough);
+
+// ── Stage breakthrough ──
+const br1 = P.breakthrough('test');
+ok('stage breakthrough success', br1.success && br1.kind === 'stage');
+const p2 = P.getPlayer('test');
+ok('advanced to stage 1', p2.stage === 1);
+ok('step reset to 0',      p2.step === 0);
+ok('qi reset to 0',        p2.qi === 0);
+
+// ── Breakthrough blocked before Peak ──
+const br2 = P.breakthrough('test');
+ok('breakthrough blocked before Peak', !br2.success);
+
+// ── Second stage to Peak, then realm breakthrough ──
+sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
+P.tickCultivation('test');
+ok('stage 1 reached Peak', P.getPlayer('test').step >= BREAKTHROUGH_STEP);
+const br3 = P.breakthrough('test');
+ok('realm breakthrough success',           br3.success && br3.kind === 'realm');
+ok('advanced to Martial Artist (realm 1)', P.getPlayer('test').realm === 1);
+ok('reset to stage 0',                      P.getPlayer('test').stage === 0);
+ok('charge consumed on realm breakthrough', P.getPlayer('test').tribulation_charge === 0);
+
+// ── Perfection rewards ──
+// Place player at Lesser Perfection (step 5) with 0 qi, then give enough time to reach Greater.
+// Mortal step 5 cost = 5 × 9 = 45 qi → 45 min
+sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, essence=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 50 * 60, 'test');
+P.tickCultivation('test');
+const p5 = P.getPlayer('test');
+ok('advanced to Greater Perfection (step 6)', p5.step === 6);
+ok('essence +1 on reaching Greater',          p5.essence === 1);
+ok('charge +1 on reaching Greater',           p5.tribulation_charge === 1);
+
+// ── Extreme Perfection cap ──
+// Place at step 7 with 0 qi. Let it tick for a long time. Qi should cap at step 7 cost.
+sql('UPDATE players SET realm=0, stage=0, step=7, qi=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 10 * 3600, 'test');
+P.tickCultivation('test');
+const p7 = P.getPlayer('test');
+ok('step stays at Extreme Perfection (7)', p7.step === 7);
+ok('qi capped at step 7 cost',             p7.qi === P.stepCost(0, 7));
+
+// ── Final-cap detection ──
+// Push to last realm, last stage, Extreme Perfection, qi maxed
+sql('UPDATE players SET realm=?, stage=?, step=7, qi=? WHERE id=?')
+  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, P.stepCost(REALMS.length - 1, 7), 'test');
+const vFinal = P.getCultivationView(P.getPlayer('test'));
+ok('isFinalCap at summit', vFinal.isFinalCap);
+
+// ── formatDuration sanity ──
+ok('formatDuration 45s',     P.formatDuration(45) === '45s');
+ok('formatDuration 125s',    P.formatDuration(125) === '2m 5s');
+ok('formatDuration 3661s',   P.formatDuration(3661) === '1h 1m');
+ok('formatDuration 90000s',  P.formatDuration(90000) === '1d 1h');
 
 db.close();
 rmSync('data', { recursive: true, force: true });
