@@ -11,24 +11,39 @@ function renderView(playerId, extra) {
   return renderGrind(player, extra || { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: player.level, beforeNetworth: player.networth, afterNetworth: player.networth, xpPercent: player.xp / player.xp_needed, player });
 }
 
+function formatQuestResult(result, flavorVerb) {
+  if (!result.wins && !result.losses) {
+    const eta = Player.formatDuration(Player.staminaEtaSeconds(result.player));
+    return { success: true, message: `⏸️ Out of stamina — next ⚡ in ${eta}`, extra: result };
+  }
+  const verb = flavorVerb || 'Quest';
+  const enemyName = result.enemy?.name || 'foe';
+  const parts = [`⚔️ ${verb} ${enemyName}: ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`];
+  if (result.leveled) parts.push(`🎉 Lv.${result.newLevel} — ${Player.pickFlavor('levelUp')}`);
+  if (result.newRealm) parts.push(`✨ Breakthrough → ${result.newRealm.icon} ${result.newRealm.name}`);
+  const legendary = result.loot?.find(i => i.rarity === 'legendary');
+  const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
+  if (legendary) parts.push(`🌟 LEGENDARY: ${legendary.icon} ${legendary.name}!!!`);
+  else if (epic) parts.push(`✨ EPIC: ${epic.icon} ${epic.name}!`);
+  else if (result.loot?.length && Math.random() < 0.4) parts.push(Player.pickFlavor('loot'));
+  if (result.player.pending_skill_picks > 0) parts.push(`🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
+  // tail flavor for win/loss balance
+  if (!parts.some(p => p.includes('—')) && result.wins >= result.losses) parts.push(`"${Player.pickFlavor('victory')}"`);
+  else if (result.losses > result.wins) parts.push(`"${Player.pickFlavor('defeat')}"`);
+  return { success: true, message: parts.join(' | '), extra: result };
+}
+
 function executeAction(playerId, action, args = {}) {
   Player.regenStamina(playerId);
   const actions = {
-    grind: () => {
-      const result = Player.grind(playerId);
-      if (!result.wins && !result.losses) {
-        const eta = Player.formatDuration(Player.staminaEtaSeconds(result.player));
-        return { success: true, message: `⏸️ Out of stamina — next ⚡ in ${eta}`, extra: result };
-      }
-      const parts = [`⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`];
-      if (result.leveled) parts.push(`🎉 Lv.${result.newLevel}`);
-      if (result.newRealm) parts.push(`✨ Breakthrough → ${result.newRealm.icon} ${result.newRealm.name}`);
-      const legendary = result.loot?.find(i => i.rarity === 'legendary');
-      const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
-      if (legendary) parts.push(`🌟 LEGENDARY: ${legendary.icon} ${legendary.name}!!!`);
-      else if (epic) parts.push(`✨ EPIC: ${epic.icon} ${epic.name}!`);
-      if (result.player.pending_skill_picks > 0) parts.push(`🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
-      return { success: true, message: parts.join(' | '), extra: result };
+    quest: () => formatQuestResult(Player.grind(playerId, args.enemyId), args.verb),
+    arena: () => {
+      const r = Player.pvpFight(playerId);
+      if (!r.success) return r;
+      const head = r.won ? `🏆 Defeated ${r.opponentName}! +${r.gold}g +${r.xp}xp` : `💀 Lost to ${r.opponentName}. +${r.xp}xp`;
+      const tail = r.won ? Player.pickFlavor('arena_win') : Player.pickFlavor('arena_loss');
+      const realm = r.leveled ? ` | 🎉 Lv.${r.newLevel}` : '';
+      return { success: true, message: `${head}${realm} | "${tail}"` };
     },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}` } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}` } : r; },
@@ -56,7 +71,10 @@ export async function handleCommand(interaction) {
 export async function handleButton(interaction) {
   const playerId = interaction.user.id;
   if (!Player.getPlayer(playerId)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
-  const result = executeAction(playerId, interaction.customId, {});
+  const [action, ...rest] = interaction.customId.split(':');
+  let args = {};
+  if (action === 'quest') args = { enemyId: rest[0], verb: rest[1] };
+  const result = executeAction(playerId, action, args);
   await interaction.update({
     content: result.success ? `✅ ${result.message}` : `❌ ${result.message}`,
     files: [new AttachmentBuilder(renderView(playerId, result.extra), { name: 'tianming.jpg' })],
@@ -88,10 +106,18 @@ export async function handleSelectMenu(interaction) {
 
 function buildUI(playerId) {
   const player = Player.getPlayer(playerId);
-  const rows = [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('grind').setLabel('🔥 CULTIVATE').setStyle(ButtonStyle.Success)),
-  ];
+  const rows = [];
+
+  // Row 1: Tavern — 3 quest buttons + ARENA
+  if (player) {
+    const quests = Player.getQuestOffers(playerId);
+    const questButtons = quests.map(q => {
+      const label = `${q.enemy.icon} ${q.verb} ${q.enemy.name}`.slice(0, 80);
+      return new ButtonBuilder().setCustomId(`quest:${q.enemyId}:${q.verb}`).setLabel(label).setStyle(ButtonStyle.Success);
+    });
+    questButtons.push(new ButtonBuilder().setCustomId('arena').setLabel('🗡️ ARENA').setStyle(ButtonStyle.Danger));
+    rows.push(new ActionRowBuilder().addComponents(...questButtons));
+  }
 
   // Equip items
   if (player) {

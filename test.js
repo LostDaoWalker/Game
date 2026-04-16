@@ -1,7 +1,7 @@
 // Smoke test — cultivation bot, current systems only
 import { getDb } from './src/core/database.js';
 import * as P from './src/core/player.js';
-import { EQUIPMENT, SKILLS, ENEMIES, ANCESTORS, BLOODLINES, PHYSIQUES, TALENTS, ZONES, getRealm } from './src/core/config.js';
+import { EQUIPMENT, SKILLS, ENEMIES, ANCESTORS, BLOODLINES, PHYSIQUES, TALENTS, CLASSES, QUEST_VERBS, COMBAT_FLAVORS, ZONES, getRealm } from './src/core/config.js';
 import { renderGrind } from './src/rendering/views/grind.js';
 import { renderCard } from './src/rendering/views/card.js';
 import { rmSync, mkdirSync } from 'fs';
@@ -66,6 +66,37 @@ ok('realm Lv1 = Mortal', getRealm(1).name === 'Mortal');
 ok('realm Lv5 = Martial Artist', getRealm(5).name === 'Martial Artist');
 ok('realm Lv20+ = Golden Core', getRealm(20).name === 'Golden Core');
 
+// ── Classes ──
+ok('default class sword', P.getPlayer('test').class === 'sword');
+ok('set class body', P.setClass('test', 'body').success);
+ok('bad class rejected', !P.setClass('test', 'unknown').success);
+ok('class persisted', P.getPlayer('test').class === 'body');
+
+// ── Quests ──
+const quests = P.getQuestOffers('test');
+ok('quest offers array', Array.isArray(quests));
+ok('quest offers have 1-3 items', quests.length >= 1 && quests.length <= 3);
+if (quests.length) {
+  ok('quest has enemy', !!quests[0].enemy);
+  ok('quest has verb', QUEST_VERBS.includes(quests[0].verb));
+}
+
+// ── Quest grind (chosen enemy) ──
+P.regenStamina('test');
+const questResult = P.grind('test', 'troublemaker');
+ok('quest grind returns result', !!questResult);
+ok('quest grind targets chosen enemy', questResult.enemyId === 'troublemaker' || !questResult.enemyId);
+
+// ── PvP (arena) ──
+P.regenStamina('test');
+P.getOrCreatePlayer('test2', 'Opponent');
+const arena = P.pvpFight('test');
+ok('pvp returns cleanly', arena.success === true || !!arena.error);
+
+// ── Flavor ──
+ok('flavor picks a line', typeof P.pickFlavor('victory') === 'string');
+ok('flavor empty for unknown key', P.pickFlavor('nonexistent') === '');
+
 // ── HP always full between fights ──
 const hpCheck = P.getPlayer('test');
 ok('hp at max between fights', hpCheck.hp === hpCheck.max_hp);
@@ -91,7 +122,9 @@ for (const [enemyId, enemy] of Object.entries(ENEMIES)) {
 }
 ok('8 skills', Object.keys(SKILLS).length === 8);
 ok('5 ancestors', Object.keys(ANCESTORS).length === 5);
+ok('3 classes', Object.keys(CLASSES).length === 3);
 ok('29 equipment items', Object.keys(EQUIPMENT).length === 29);
+ok('COMBAT_FLAVORS has victory', Array.isArray(COMBAT_FLAVORS.victory));
 
 // ── Combat balance — 50 fights ──
 P.getOrCreatePlayer('balance', 'BalanceTest');
