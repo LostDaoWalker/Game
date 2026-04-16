@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, COMBAT_FLAVORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -444,19 +444,12 @@ export function setClass(playerId, classId) {
   return { success: true, class: CLASSES[classId] };
 }
 
-export function pickFlavor(key) {
-  const arr = COMBAT_FLAVORS[key];
-  if (!arr || !arr.length) return '';
-  return arr[(Math.random() * arr.length) | 0];
-}
-
 // ── GRIND — core loop: fight, sell junk ──
 
 export function grind(playerId) {
   regenStamina(playerId);
   const before = getPlayer(playerId);
-  const beforeRealm = getRealm(before.level);
-  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level, newRealm: null };
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
 
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
@@ -464,11 +457,7 @@ export function grind(playerId) {
     result.wins = bulk.wins; result.losses = bulk.losses;
     result.goldEarned = bulk.goldEarned; result.xpEarned = bulk.xpEarned;
     result.loot = bulk.loot; result.stoppedReason = bulk.stoppedReason;
-    if (bulk.levelsGained) {
-      result.leveled = true; result.newLevel = bulk.endLevel;
-      const afterRealm = getRealm(bulk.endLevel);
-      if (afterRealm.name !== beforeRealm.name) result.newRealm = afterRealm;
-    }
+    if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
   }
 
 

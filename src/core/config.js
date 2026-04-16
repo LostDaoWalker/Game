@@ -158,14 +158,6 @@ export const TALENTS = Object.freeze({
   dull:     { name: 'Dull Roots',                  icon: '🪨', bonus: {},                      weight: 50 },
 });
 
-// ── Combat flavor — comic-book lines for random color ──
-export const COMBAT_FLAVORS = Object.freeze({
-  victory: ['Another soul for the Dao.', 'The path calls you forward.', 'Heaven bears witness.', 'Your qi sings.', 'The blade knows its master.'],
-  defeat: ['A humbling defeat.', 'The path is long.', 'You rise, bones aching.', 'The Dao teaches through pain.', 'Even mountains fall.'],
-  levelUp: ['Your qi surges.', 'A breakthrough!', 'Heaven opens.', 'The Dao deepens.', 'Your meridians widen.'],
-  loot: ['The spirits favor you.', 'Fortune smiles.', 'Treasure claimed.', 'The ancestors approve.'],
-});
-
 // ── Classes (Three Paths of Cultivation) — player-chosen ──
 export const CLASSES = Object.freeze({
   sword: { name: 'Sword Path', icon: '⚔️', desc: 'Masters of the blade — fast, precise, lethal', bonus: { attack: 4, speed: 1 } },

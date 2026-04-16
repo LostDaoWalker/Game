@@ -16,17 +16,13 @@ function formatGrindResult(result) {
     const eta = Player.formatDuration(Player.staminaEtaSeconds(result.player));
     return { success: true, message: `⏸️ Out of stamina — next ⚡ in ${eta}`, extra: result };
   }
-  const parts = [`⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`];
-  if (result.leveled) parts.push(`🎉 Lv.${result.newLevel} — ${Player.pickFlavor('levelUp')}`);
-  if (result.newRealm) parts.push(`✨ Breakthrough → ${result.newRealm.icon} ${result.newRealm.name}`);
+  const parts = [`${result.wins}W/${result.losses}L +${result.goldEarned}g +${result.xpEarned}xp`];
+  if (result.leveled) parts.push(`Lv.${result.newLevel}`);
   const legendary = result.loot?.find(i => i.rarity === 'legendary');
   const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
-  if (legendary) parts.push(`🌟 LEGENDARY: ${legendary.icon} ${legendary.name}!!!`);
-  else if (epic) parts.push(`✨ EPIC: ${epic.icon} ${epic.name}!`);
-  else if (result.loot?.length && Math.random() < 0.4) parts.push(Player.pickFlavor('loot'));
-  if (result.player.pending_skill_picks > 0) parts.push(`🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
-  if (result.wins >= result.losses && !result.leveled) parts.push(`"${Player.pickFlavor('victory')}"`);
-  else if (result.losses > result.wins) parts.push(`"${Player.pickFlavor('defeat')}"`);
+  if (legendary) parts.push(`LEGENDARY ${legendary.icon} ${legendary.name}`);
+  else if (epic) parts.push(`EPIC ${epic.icon} ${epic.name}`);
+  if (result.player.pending_skill_picks > 0) parts.push(`${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
   return { success: true, message: parts.join(' | '), extra: result };
 }
 
