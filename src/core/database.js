@@ -24,7 +24,8 @@ export function getDb() {
       qi INTEGER NOT NULL DEFAULT 0 CHECK(qi >= 0),
       cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
       prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0),
-      tribulation_charge INTEGER NOT NULL DEFAULT 0 CHECK(tribulation_charge >= 0)
+      tribulation_charge INTEGER NOT NULL DEFAULT 0 CHECK(tribulation_charge >= 0),
+      meditate_available_at INTEGER NOT NULL DEFAULT 0
     );
   `);
 
@@ -36,8 +37,9 @@ export function getDb() {
   add('step',                "INTEGER NOT NULL DEFAULT 0");
   add('qi',                  "INTEGER NOT NULL DEFAULT 0");
   add('cultivation_tick_at', "INTEGER NOT NULL DEFAULT (unixepoch())");
-  add('prowess_bonus_pct',   "INTEGER NOT NULL DEFAULT 0");
-  add('tribulation_charge',  "INTEGER NOT NULL DEFAULT 0");
+  add('prowess_bonus_pct',    "INTEGER NOT NULL DEFAULT 0");
+  add('tribulation_charge',   "INTEGER NOT NULL DEFAULT 0");
+  add('meditate_available_at', "INTEGER NOT NULL DEFAULT 0");
   // Drop retired columns if a dev DB from an earlier iteration still has them
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
 

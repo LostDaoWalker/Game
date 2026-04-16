@@ -106,6 +106,43 @@ ok('full perfection of a stage = +3 charge',    pFull.tribulation_charge === 3);
 const vProwess = P.getCultivationView(pFull);
 ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 15);
 
+// ── Meditate ──
+// Reset to fresh state
+sql(`UPDATE players SET
+      realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0, tribulation_charge=0,
+      cultivation_tick_at=?, meditate_available_at=0
+     WHERE id=?`).run(((Date.now() / 1000) | 0), 'test');
+
+// First meditate grants 10 xp (10 minutes × 1 qi/min)
+const m1 = P.meditate('test');
+ok('meditate success',          m1.success);
+ok('meditate grants 10 xp',     m1.qiGained === 10);
+// 10 xp: consumes Entry (cost 5) → step=1, qi=5. Early costs 7, so stops at Early with 5 qi.
+const pm1 = P.getPlayer('test');
+ok('step advanced to Early after 10 xp', pm1.step === 1);
+ok('qi=5 remaining in Early',            pm1.qi === 5);
+
+// Second meditate immediately is blocked by cooldown
+const m2 = P.meditate('test');
+ok('second meditate blocked by cooldown', !m2.success && m2.error === 'On cooldown');
+ok('cooldown eta exposed',                typeof m2.etaSeconds === 'number' && m2.etaSeconds > 0);
+
+// View says meditate is unavailable right now
+const vCd = P.getCultivationView(P.getPlayer('test'));
+ok('view: canMeditate=false during cooldown', !vCd.canMeditate);
+ok('view: meditateCdLeft > 0',                vCd.meditateCdLeft > 0);
+
+// Fast-forward past cooldown and meditate again
+sql('UPDATE players SET meditate_available_at=0 WHERE id=?').run('test');
+const m3 = P.meditate('test');
+ok('meditate after cooldown succeeds', m3.success);
+
+// Meditate while at Extreme Perfection with qi capped is blocked
+sql(`UPDATE players SET step=7, qi=?, meditate_available_at=0, cultivation_tick_at=? WHERE id=?`)
+  .run(P.stepCost(0, 7), ((Date.now() / 1000) | 0), 'test');
+const m4 = P.meditate('test');
+ok('meditate blocked when qi at Extreme Perfection cap', !m4.success);
+
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');
 ok('formatDuration 125s',    P.formatDuration(125) === '2m 5s');

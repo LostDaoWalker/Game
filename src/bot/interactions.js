@@ -18,7 +18,13 @@ function renderHome(player) {
 
 function buildUI(player) {
   const v = P.getCultivationView(player);
+  const meditateLabel = v.meditateCdLeft > 0 ? `🧘 Meditate (${P.formatDuration(v.meditateCdLeft)})` : '🧘 Meditate';
   return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('meditate')
+      .setLabel(meditateLabel)
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!v.canMeditate),
     new ButtonBuilder()
       .setCustomId('breakthrough')
       .setLabel('⚡ Breakthrough')
@@ -39,20 +45,24 @@ export async function handleButton(interaction) {
   const id = interaction.user.id;
   if (!P.getPlayer(id)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
 
-  if (interaction.customId === 'breakthrough') {
+  let banner = null;
+
+  if (interaction.customId === 'meditate') {
+    const r = P.meditate(id);
+    banner = r.success ? `🧘 +${r.qiGained} xp` : `⚠️ ${r.error}`;
+  } else if (interaction.customId === 'breakthrough') {
     const r = P.breakthrough(id);
     P.tickCultivation(id);
-    const player = P.getPlayer(id);
-    const banner = r.success
+    banner = r.success
       ? (r.kind === 'realm' ? `✨ **Breakthrough to ${r.next}**` : `${r.previous} → **${r.next}**`)
       : `⚠️ ${r.error}`;
-    await interaction.update({ content: `${banner}\n\n${renderHome(player)}`, components: buildUI(player) });
-    return;
+  } else {
+    P.tickCultivation(id);
   }
 
-  P.tickCultivation(id);
   const player = P.getPlayer(id);
-  await interaction.update({ content: renderHome(player), components: buildUI(player) });
+  const content = banner ? `${banner}\n\n${renderHome(player)}` : renderHome(player);
+  await interaction.update({ content, components: buildUI(player) });
 }
 
 export async function handleSelectMenu(interaction) {

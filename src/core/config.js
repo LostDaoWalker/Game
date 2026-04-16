@@ -60,6 +60,8 @@ export const REALMS = Object.freeze([
 
 // ── Cultivation tuning ──
 export const CULTIVATION = Object.freeze({
-  baseRatePerMin: 1,         // qi per walltime-minute of passive cultivation
-  prowessPerPerfection: 5,   // +5% combat prowess per perfection step reached
+  baseRatePerMin: 1,              // qi per walltime-minute of passive cultivation
+  prowessPerPerfection: 5,        // +5% combat prowess per perfection step reached
+  meditateGrantMinutes: 10,       // 🧘 Meditate grants this many minutes of cultivation
+  meditateCooldownSeconds: 600,   // cooldown between meditate clicks
 });
