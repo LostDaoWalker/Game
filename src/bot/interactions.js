@@ -46,6 +46,9 @@ function renderProfile(playerId) {
     lines.push(`${tag} **${t.name}** — ${effects || '*no effect*'}`);
   }
 
+  lines.push('', '**Wealth**');
+  lines.push(`💎 ${player.spirit_stones} spirit stones · 🟢 ${player.jade} jade`);
+
   lines.push('', '**Stats**');
   lines.push(`Cultivation rate: ${stats.cultivationRate.toFixed(2)} xp/min` + (stats.rateBonusPct ? ` *(+${stats.rateBonusPct}% from talents)*` : ''));
   lines.push(`Prowess: +${stats.totalProwessBonusPct}%` + (stats.prowessFromTalents ? ` *(${stats.prowessFromPerfections} perfections + ${stats.prowessFromTalents} talents)*` : ''));
@@ -111,9 +114,12 @@ export async function handleButton(interaction) {
     const r = P.breakthrough(id);
     P.tickCultivation(id);
     if (r.success) {
+      const coinsLine = r.kind === 'realm'
+        ? `\n💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`
+        : (r.stonesEarned ? `\n💎 +${r.stonesEarned}` : '');
       banner = r.kind === 'realm'
-        ? `✨ **Breakthrough to ${r.next}**` + (r.talent ? `\n🌟 New talent: **${r.talent.name}** *(${r.talent.rarity})*` : '')
-        : `${r.previous} → **${r.next}**`;
+        ? `✨ **Breakthrough to ${r.next}**${coinsLine}` + (r.talent ? `\n🌟 New talent: **${r.talent.name}** *(${r.talent.rarity})*` : '')
+        : `${r.previous} → **${r.next}**${coinsLine}`;
     } else {
       banner = `⚠️ ${r.error}`;
     }

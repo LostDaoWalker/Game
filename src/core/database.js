@@ -23,7 +23,9 @@ export function getDb() {
       step INTEGER NOT NULL DEFAULT 0 CHECK(step >= 0),
       qi INTEGER NOT NULL DEFAULT 0 CHECK(qi >= 0),
       cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
-      prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0)
+      prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0),
+      spirit_stones INTEGER NOT NULL DEFAULT 0 CHECK(spirit_stones >= 0),
+      jade INTEGER NOT NULL DEFAULT 0 CHECK(jade >= 0)
     );
     CREATE TABLE IF NOT EXISTS talents (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,6 +45,8 @@ export function getDb() {
   add('qi',                  "INTEGER NOT NULL DEFAULT 0");
   add('cultivation_tick_at', "INTEGER NOT NULL DEFAULT (unixepoch())");
   add('prowess_bonus_pct',   "INTEGER NOT NULL DEFAULT 0");
+  add('spirit_stones',       "INTEGER NOT NULL DEFAULT 0");
+  add('jade',                "INTEGER NOT NULL DEFAULT 0");
   // Drop retired columns if a dev DB from an earlier iteration still has them
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
 

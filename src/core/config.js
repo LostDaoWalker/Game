@@ -67,7 +67,15 @@ export const CULTIVATION = Object.freeze({
   cultivateGrantMax: 3,       //   no cooldown, no realm scaling
 });
 
-// ── Talents ──
+// ── Currencies ──
+// Spirit Stones = general (will spend on daoist rolls and cultivation aid).
+// Jade         = premium (rarer; higher-tier daoist rolls).
+export const CURRENCIES = Object.freeze({
+  perfectionStones:         50,   // per perfection step reached
+  stageBreakthroughStones: 100,   // per stage breakthrough
+  realmBreakthroughStones: 500,   // per realm breakthrough
+  realmBreakthroughJade:     2,   // per realm breakthrough
+});
 // Granted randomly at character creation and on every realm breakthrough.
 // Private — never shown to other players. Weighted rarity pick, then uniform pick within tier.
 export const TALENT_RARITY_WEIGHTS = Object.freeze({

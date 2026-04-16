@@ -95,6 +95,7 @@ ok('qi advances past Extreme Perfection into Absolute', pPastExtreme.step === 8)
 ok('Absolute grants +5% prowess',                       pPastExtreme.prowess_bonus_pct === 5);
 
 // ── Qi keeps accumulating past Absolute Perfection (no cap) ──
+sql('DELETE FROM talents WHERE player_id=?').run('test');
 sql('UPDATE players SET realm=0, stage=0, step=8, qi=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 100 * 3600, 'test');
 P.tickCultivation('test');
@@ -129,12 +130,14 @@ const vProwess = P.getCultivationView(pFull);
 ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 20);
 
 // ── Cultivate button (spammable, no cooldown, random 1-3 xp) ──
+// Clear talents so cultivateGrantBonus doesn't skew the base-rate assertion.
+sql('DELETE FROM talents WHERE player_id=?').run('test');
 sql(`UPDATE players SET
       realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0,
       cultivation_tick_at=?
      WHERE id=?`).run(((Date.now() / 1000) | 0), 'test');
 
-// Grant is random in [1, 3]
+// Grant is random in [1, 3] (no talent bonuses)
 for (let i = 0; i < 20; i++) {
   const r = P.cultivate('test');
   ok('cultivate grant in [1, 3]', r.success && r.qiGained >= 1 && r.qiGained <= 3);
@@ -229,6 +232,33 @@ for (let i = 0; i < 30; i++) {
 }
 ok('cultivate grant min shifted by +1 (was 1..3, now 2..4)', grantMin === 2);
 ok('cultivate grant max shifted by +1 (was 1..3, now 2..4)', grantMax === 4);
+
+// ── Currencies ──
+// Fresh player starts with 0 stones, 0 jade
+P.getOrCreatePlayer('cur', 'Currency');
+const c0 = P.getPlayer('cur');
+ok('starts 0 spirit stones', c0.spirit_stones === 0);
+ok('starts 0 jade',          c0.jade === 0);
+
+// Perfection step grants +50 stones
+sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, prowess_bonus_pct=0, spirit_stones=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 60 * 60, 'cur');
+P.tickCultivation('cur');
+const c1 = P.getPlayer('cur');
+ok('reaching Greater Perfection grants +50 stones', c1.spirit_stones === 50);
+
+// Stage breakthrough grants +100 stones + perfection stones earned during the carry-over applyQi
+sql('UPDATE players SET realm=0, stage=0, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0 WHERE id=?').run('cur');
+const brS = P.breakthrough('cur');
+ok('stage breakthrough returns stonesEarned',      typeof brS.stonesEarned === 'number');
+ok('stage breakthrough grants at least +100 stones', P.getPlayer('cur').spirit_stones >= 100);
+
+// Realm breakthrough grants +500 stones + 2 jade
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0 WHERE id=?').run('cur');
+const brR = P.breakthrough('cur');
+ok('realm breakthrough kind=realm', brR.success && brR.kind === 'realm');
+ok('realm breakthrough grants 500+ stones', P.getPlayer('cur').spirit_stones >= 500);
+ok('realm breakthrough grants 2 jade',       P.getPlayer('cur').jade === 2);
 
 db.close();
 rmSync('data', { recursive: true, force: true });
