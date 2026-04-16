@@ -16,11 +16,19 @@ function executeAction(playerId, action, args = {}) {
   const actions = {
     grind: () => {
       const result = Player.grind(playerId);
-      let msg = `⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`;
-      if (result.leveled) msg += ` | 🎉 Lv.${result.newLevel}`;
-      if (result.player.pending_skill_picks > 0) msg += ` | 🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`;
-      if (!result.wins && !result.losses) msg = '⏸️ Out of stamina';
-      return { success: true, message: msg, extra: result };
+      if (!result.wins && !result.losses) {
+        const eta = Player.formatDuration(Player.staminaEtaSeconds(result.player));
+        return { success: true, message: `⏸️ Out of stamina — next ⚡ in ${eta}`, extra: result };
+      }
+      const parts = [`⚔️ ${result.wins}W/${result.losses}L → +${result.goldEarned}g +${result.xpEarned}xp`];
+      if (result.leveled) parts.push(`🎉 Lv.${result.newLevel}`);
+      if (result.newRealm) parts.push(`✨ Breakthrough → ${result.newRealm.icon} ${result.newRealm.name}`);
+      const legendary = result.loot?.find(i => i.rarity === 'legendary');
+      const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
+      if (legendary) parts.push(`🌟 LEGENDARY: ${legendary.icon} ${legendary.name}!!!`);
+      else if (epic) parts.push(`✨ EPIC: ${epic.icon} ${epic.name}!`);
+      if (result.player.pending_skill_picks > 0) parts.push(`🎯 ${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
+      return { success: true, message: parts.join(' | '), extra: result };
     },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}` } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}` } : r; },

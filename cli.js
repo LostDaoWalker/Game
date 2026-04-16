@@ -139,7 +139,7 @@ if (gameCommands.has(cmd)) {
     const ms = ((performance.now() - t0) / 50).toFixed(1);
     console.log(`Render: ${ms}ms/frame (card, 50 iterations)`);
 
-    try { const dbSize = statSync('data/halcyon.db').size; console.log(`DB:     ${(dbSize / 1024).toFixed(1)}KB`); } catch { console.log('DB:     no database'); }
+    try { const dbSize = statSync('data/tianming.db').size; console.log(`DB:     ${(dbSize / 1024).toFixed(1)}KB`); } catch { console.log('DB:     no database'); }
     getDb().close();
   }
 

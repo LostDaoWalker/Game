@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync, renameSync } from 'fs';
 
 let db;
 const stmtCache = new Map();
@@ -13,7 +13,9 @@ const DEAD_COLUMNS = [
 export function getDb() {
   if (db) return db;
   mkdirSync('data', { recursive: true });
-  db = new Database('data/halcyon.db');
+  // One-time rename of legacy DB file
+  if (existsSync('data/halcyon.db') && !existsSync('data/tianming.db')) renameSync('data/halcyon.db', 'data/tianming.db');
+  db = new Database('data/tianming.db');
   db.pragma('journal_mode=WAL'); db.pragma('synchronous=NORMAL'); db.pragma('cache_size=-64000'); db.pragma('foreign_keys=ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS players (

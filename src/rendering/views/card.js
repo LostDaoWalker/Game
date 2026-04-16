@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { ANCESTORS, FRAME_TIERS } from '../../core/config.js';
+import { ANCESTORS, FRAME_TIERS, getRealm } from '../../core/config.js';
 import * as R from '../canvas.js';
 
 const CARD_W = 350, CARD_H = 490;
@@ -71,7 +71,13 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.fillStyle = '#fafafa';
   ctx.font = "bold 22px 'Courier New',monospace";
   ctx.textAlign = 'center';
-  ctx.fillText(player.username, centerX, y + 18);
+  ctx.fillText(player.username, centerX, y + 14);
+
+  // Realm — just below username
+  const realm = getRealm(player.level);
+  ctx.fillStyle = '#d4d4d8';
+  ctx.font = "12px 'Courier New',monospace";
+  ctx.fillText(`${realm.icon} Lv.${player.level} ${realm.name}`, centerX, y + 40);
 
   // Networth — bottom center
   ctx.fillStyle = frameColor;

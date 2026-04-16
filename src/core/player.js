@@ -52,6 +52,20 @@ export function regenStamina(playerId) {
   }
 }
 
+// Seconds until the next stamina tick arrives
+export function staminaEtaSeconds(player) {
+  if (player.stamina >= player.max_stamina) return 0;
+  const now = Date.now() / 1000 | 0;
+  return Math.max(0, player.stamina_regen_at + ECO.staminaRegen - now);
+}
+
+export function formatDuration(seconds) {
+  if (seconds <= 0) return 'now';
+  if (seconds < 60) return `${seconds}s`;
+  const m = (seconds / 60) | 0, s = seconds % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
 // ── XP / Leveling ──
 
 export function addXp(playerId, amount) {
@@ -429,7 +443,8 @@ export function setAncestor(playerId, ancestorId) {
 export function grind(playerId) {
   regenStamina(playerId);
   const before = getPlayer(playerId);
-  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level };
+  const beforeRealm = getRealm(before.level);
+  const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level, newRealm: null };
 
   const enemyId = bestEnemy(playerId);
   if (enemyId) {
@@ -437,7 +452,11 @@ export function grind(playerId) {
     result.wins = bulk.wins; result.losses = bulk.losses;
     result.goldEarned = bulk.goldEarned; result.xpEarned = bulk.xpEarned;
     result.loot = bulk.loot; result.stoppedReason = bulk.stoppedReason;
-    if (bulk.levelsGained) { result.leveled = true; result.newLevel = bulk.endLevel; }
+    if (bulk.levelsGained) {
+      result.leveled = true; result.newLevel = bulk.endLevel;
+      const afterRealm = getRealm(bulk.endLevel);
+      if (afterRealm.name !== beforeRealm.name) result.newRealm = afterRealm;
+    }
   }
 
 
