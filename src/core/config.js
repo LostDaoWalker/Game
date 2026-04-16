@@ -60,6 +60,6 @@ export const REALMS = Object.freeze([
 
 // ── Cultivation tuning ──
 export const CULTIVATION = Object.freeze({
-  baseRatePerMin: 1,        // qi per walltime-minute (base, before essence bonus)
-  essenceRateBonus: 0.01,   // +1% cultivation rate per essence point (additive)
+  baseRatePerMin: 1,         // qi per walltime-minute of passive cultivation
+  prowessPerPerfection: 5,   // +5% combat prowess per perfection step reached
 });

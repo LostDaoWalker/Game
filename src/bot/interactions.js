@@ -15,9 +15,8 @@ function renderHome(player) {
   ];
   if (v.isFinalCap) lines.push('*(peak of the known path)*');
   else if (v.etaSeconds > 0) lines.push(`~${P.formatDuration(v.etaSeconds)} to next step`);
-  if (v.essence > 0 || v.tribulationCharge > 0) {
-    const essenceStr = v.essence > 0 ? `essence ${v.essence} (+${v.rateBonusPct}%)` : 'essence 0';
-    lines.push(`${essenceStr} · charge ${v.tribulationCharge}`);
+  if (v.prowessBonusPct > 0 || v.tribulationCharge > 0) {
+    lines.push(`prowess +${v.prowessBonusPct}% · charge ${v.tribulationCharge}`);
   }
   return lines.join('\n');
 }

@@ -19,9 +19,9 @@ ok('player created', player?.id === 'test');
 ok('starts Mortal',         player.realm === 0);
 ok('starts stage 0',        player.stage === 0);
 ok('starts Entry (step 0)', player.step === 0);
-ok('starts 0 qi',           player.qi === 0);
-ok('starts 0 essence',      player.essence === 0);
-ok('starts 0 charge',       player.tribulation_charge === 0);
+ok('starts 0 qi',                player.qi === 0);
+ok('starts 0 prowess bonus',     player.prowess_bonus_pct === 0);
+ok('starts 0 charge',            player.tribulation_charge === 0);
 
 // ── Tick: no time elapsed ──
 sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run((Date.now() / 1000) | 0, 'test');
@@ -63,13 +63,13 @@ ok('charge consumed on realm breakthrough', P.getPlayer('test').tribulation_char
 // ── Perfection rewards ──
 // Place player at Lesser Perfection (step 5) with 0 qi, then give enough time to reach Greater.
 // Mortal step 5 cost = 5 × 9 = 45 qi → 45 min
-sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, essence=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 50 * 60, 'test');
 P.tickCultivation('test');
 const p5 = P.getPlayer('test');
-ok('advanced to Greater Perfection (step 6)', p5.step === 6);
-ok('essence +1 on reaching Greater',          p5.essence === 1);
-ok('charge +1 on reaching Greater',           p5.tribulation_charge === 1);
+ok('advanced to Greater Perfection (step 6)',    p5.step === 6);
+ok('prowess +5% on reaching Greater',            p5.prowess_bonus_pct === 5);
+ok('charge +1 on reaching Greater',              p5.tribulation_charge === 1);
 
 // ── Extreme Perfection cap ──
 // Place at step 7 with 0 qi. Let it tick for a long time. Qi should cap at step 7 cost.
@@ -87,24 +87,24 @@ sql('UPDATE players SET realm=?, stage=?, step=7, qi=? WHERE id=?')
 const vFinal = P.getCultivationView(P.getPlayer('test'));
 ok('isFinalCap at summit', vFinal.isFinalCap);
 
-// ── Essence cultivation-rate bonus (additive +1% per essence point) ──
-// Rate = 1 qi/min × (1 + essence × 0.01). At 100 essence: 2 qi/min.
-sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, essence=100, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+// ── Prowess bonus is independent of cultivation rate ──
+// Rate stays at base regardless of prowess_bonus_pct.
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=100, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 60, 'test');
-const tBoost = P.tickCultivation('test');
-ok('essence 100 doubles qi gain (1 min → 2 qi)', tBoost.qiGained === 2);
+const tRate = P.tickCultivation('test');
+ok('prowess bonus does NOT affect cultivation rate (1 min → 1 qi)', tRate.qiGained === 1);
 
-// At essence 50: +50% rate. 2 min → 3 qi (floor of 3.0)
-sql('UPDATE players SET step=0, qi=0, essence=50, cultivation_tick_at=? WHERE id=?')
-  .run(((Date.now() / 1000) | 0) - 120, 'test');
-const tHalf = P.tickCultivation('test');
-ok('essence 50 with 2 min → 3 qi', tHalf.qiGained === 3);
+// Full perfection of a stage = +15% prowess (3 perfection steps × 5%)
+sql('UPDATE players SET realm=0, stage=0, step=4, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 10 * 3600, 'test');
+P.tickCultivation('test');
+const pFull = P.getPlayer('test');
+ok('full perfection of a stage = +15% prowess', pFull.prowess_bonus_pct === 15);
+ok('full perfection of a stage = +3 charge',    pFull.tribulation_charge === 3);
 
-// View reports the rate bonus
-sql('UPDATE players SET step=0, qi=0, essence=25 WHERE id=?').run('test');
-const vRate = P.getCultivationView(P.getPlayer('test'));
-ok('view reports +25% rate bonus at essence 25', vRate.rateBonusPct === 25);
-ok('view reports effective rate 1.25 qi/min',    Math.abs(vRate.rate - 1.25) < 1e-9);
+// View exposes prowessBonusPct
+const vProwess = P.getCultivationView(pFull);
+ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 15);
 
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');
