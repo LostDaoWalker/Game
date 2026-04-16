@@ -67,6 +67,33 @@ export const CULTIVATION = Object.freeze({
   cultivateGrantMax: 3,       //   no cooldown, no realm scaling
 });
 
+// ── Daoists — gacha companions rolled via Spirit Stones or Jade ──
+// Each has a combat power contribution that stacks on the owner's prowess.
+export const DAOISTS = Object.freeze({
+  // Common
+  disciple_wen:      { name: 'Disciple Wen',       rarity: 'common',    power:   5 },
+  disciple_lin:      { name: 'Disciple Lin',       rarity: 'common',    power:   5 },
+  wandering_scholar: { name: 'Wandering Scholar',  rarity: 'common',    power:   5 },
+  // Uncommon
+  sword_youth:       { name: 'Sword Youth',        rarity: 'uncommon',  power:  15 },
+  fire_monk:         { name: 'Fire Monk',          rarity: 'uncommon',  power:  15 },
+  // Rare
+  ice_enchantress:   { name: 'Ice Enchantress',    rarity: 'rare',      power:  40 },
+  thunder_lord:      { name: 'Thunder Lord',       rarity: 'rare',      power:  40 },
+  // Epic
+  shadow_assassin:   { name: 'Shadow Assassin',    rarity: 'epic',      power:  80 },
+  phoenix_prince:    { name: 'Phoenix Prince',     rarity: 'epic',      power:  80 },
+  // Legendary
+  dragon_emperor:    { name: 'Dragon Emperor',     rarity: 'legendary', power: 200 },
+});
+
+export const ROLLS = Object.freeze({
+  stoneCost: 100,
+  jadeCost:  1,
+  stoneRates: Object.freeze({ common: 70, uncommon: 20, rare: 8, epic: 2, legendary: 0 }),
+  jadeRates:  Object.freeze({ common: 40, uncommon: 25, rare: 20, epic: 10, legendary: 5 }),
+});
+
 // ── Currencies ──
 // Spirit Stones = general (will spend on daoist rolls and cultivation aid).
 // Jade         = premium (rarer; higher-tier daoist rolls).

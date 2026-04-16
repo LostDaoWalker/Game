@@ -1,5 +1,5 @@
 import { sql, tx } from './database.js';
-import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS } from './config.js';
+import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS } from './config.js';
 
 // ── Player CRUD ──
 
@@ -47,6 +47,50 @@ export function getTalents(playerId) {
 
 function sumTalentEffect(playerId, key) {
   return getTalents(playerId).reduce((sum, t) => sum + (t.effects?.[key] || 0), 0);
+}
+
+// ── Daoists ──
+// Roll: weighted rarity (type-specific rates), uniform pick within rarity.
+// Duplicates allowed. Cost is paid from spirit_stones or jade.
+function pickRarityByWeights(weights) {
+  const total = Object.values(weights).reduce((s, w) => s + w, 0);
+  let roll = Math.random() * total;
+  for (const [rarity, w] of Object.entries(weights)) {
+    roll -= w;
+    if (roll <= 0) return rarity;
+  }
+  return Object.keys(weights)[0];
+}
+
+export function rollDaoist(playerId, type) {
+  const player = getPlayer(playerId);
+  if (!player) return { success: false, error: 'No player' };
+  const isJade = type === 'jade';
+  const cost = isJade ? ROLLS.jadeCost : ROLLS.stoneCost;
+  const field = isJade ? 'jade' : 'spirit_stones';
+  if (player[field] < cost) return { success: false, error: `Need ${cost} ${isJade ? 'jade' : 'spirit stones'}` };
+  const rates = isJade ? ROLLS.jadeRates : ROLLS.stoneRates;
+  const rarity = pickRarityByWeights(rates);
+  const pool = Object.entries(DAOISTS).filter(([, d]) => d.rarity === rarity);
+  if (!pool.length) return { success: false, error: `No daoist of rarity ${rarity}` };
+  const [id, daoist] = pool[Math.floor(Math.random() * pool.length)];
+  return tx(() => {
+    sql(`UPDATE players SET ${field}=${field}-?, last_active=unixepoch() WHERE id=?`).run(cost, playerId);
+    sql('INSERT INTO daoists(player_id, daoist_id) VALUES(?, ?)').run(playerId, id);
+    return { success: true, daoist: { id, ...daoist }, cost, type };
+  });
+}
+
+export function getDaoists(playerId) {
+  const rows = sql('SELECT * FROM daoists WHERE player_id=? ORDER BY obtained_at ASC').all(playerId);
+  return rows.map(r => {
+    const d = DAOISTS[r.daoist_id];
+    return d ? { rowId: r.id, id: r.daoist_id, in_team: !!r.in_team, obtained_at: r.obtained_at, ...d } : null;
+  }).filter(Boolean);
+}
+
+export function getTeamDaoists(playerId) {
+  return getDaoists(playerId).filter(d => d.in_team);
 }
 
 // ── Cultivation math ──

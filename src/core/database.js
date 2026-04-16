@@ -34,6 +34,14 @@ export function getDb() {
       granted_at INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE INDEX IF NOT EXISTS idx_talents_pid ON talents(player_id);
+    CREATE TABLE IF NOT EXISTS daoists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      daoist_id TEXT NOT NULL,
+      obtained_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      in_team INTEGER NOT NULL DEFAULT 0 CHECK(in_team IN (0, 1))
+    );
+    CREATE INDEX IF NOT EXISTS idx_daoists_pid ON daoists(player_id);
   `);
 
   // Additive migrations (safe to re-run)

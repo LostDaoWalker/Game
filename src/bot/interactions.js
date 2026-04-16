@@ -1,6 +1,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import * as P from '../core/player.js';
-import { TALENT_RARITY_COLORS } from '../core/config.js';
+import { TALENT_RARITY_COLORS, ROLLS } from '../core/config.js';
+
+const RARITY_COLORS = TALENT_RARITY_COLORS; // same mapping for daoists
 
 function bar(pct, width = 12) {
   const filled = Math.round(Math.max(0, Math.min(1, pct)) * width);
@@ -25,6 +27,40 @@ function homeUI(player) {
     new ButtonBuilder().setCustomId('cultivate').setLabel('🔥 Cultivate').setStyle(ButtonStyle.Success).setDisabled(!v.canCultivate),
     new ButtonBuilder().setCustomId('breakthrough').setLabel('⚡ Breakthrough').setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
     new ButtonBuilder().setCustomId('view:profile').setLabel('📜 Profile').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('view:roll').setLabel('🎲 Roll').setStyle(ButtonStyle.Secondary),
+  )];
+}
+
+// ── Roll screen ──
+
+function renderRoll(playerId) {
+  const player = P.getPlayer(playerId);
+  const daoists = P.getDaoists(playerId);
+  const lines = [
+    `🎲 **Roll for Daoists**`,
+    `💎 ${player.spirit_stones} spirit stones · 🟢 ${player.jade} jade`,
+    '',
+    `• Stone roll — ${ROLLS.stoneCost} 💎 · common-focused odds`,
+    `• Jade roll — ${ROLLS.jadeCost} 🟢 · legendary possible`,
+    '',
+    `**Companions owned** (${daoists.length})`,
+  ];
+  if (!daoists.length) lines.push('*(none yet)*');
+  else {
+    const grouped = daoists.reduce((m, d) => { (m[d.id] ||= { ...d, count: 0 }).count++; return m; }, {});
+    for (const d of Object.values(grouped)) {
+      const tag = RARITY_COLORS[d.rarity] || '⚪';
+      lines.push(`${tag} **${d.name}** ×${d.count} · ${d.power} pwr`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function rollUI(player) {
+  return [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('roll:stone').setLabel(`🎲 Stone (${ROLLS.stoneCost} 💎)`).setStyle(ButtonStyle.Success).setDisabled(player.spirit_stones < ROLLS.stoneCost),
+    new ButtonBuilder().setCustomId('roll:jade').setLabel(`🎲 Jade (${ROLLS.jadeCost} 🟢)`).setStyle(ButtonStyle.Success).setDisabled(player.jade < ROLLS.jadeCost),
+    new ButtonBuilder().setCustomId('view:home').setLabel('← Back').setStyle(ButtonStyle.Secondary),
   )];
 }
 
@@ -98,11 +134,17 @@ export async function handleButton(interaction) {
   const [action, ...args] = interaction.customId.split(':');
 
   if (action === 'view') {
-    if (args[0] === 'profile') {
-      return interaction.update({ content: renderProfile(id), components: profileUI() });
-    }
-    // view:home
+    if (args[0] === 'profile') return interaction.update({ content: renderProfile(id), components: profileUI() });
+    if (args[0] === 'roll')    return interaction.update({ content: renderRoll(id), components: rollUI(P.getPlayer(id)) });
     return showHome(interaction);
+  }
+
+  if (action === 'roll') {
+    const r = P.rollDaoist(id, args[0]);
+    if (!r.success) return interaction.update({ content: `⚠️ ${r.error}\n\n${renderRoll(id)}`, components: rollUI(P.getPlayer(id)) });
+    const tag = RARITY_COLORS[r.daoist.rarity] || '⚪';
+    const banner = `🎲 Rolled ${tag} **${r.daoist.name}** *(${r.daoist.rarity})* · ${r.daoist.power} pwr`;
+    return interaction.update({ content: `${banner}\n\n${renderRoll(id)}`, components: rollUI(P.getPlayer(id)) });
   }
 
   let banner = null;

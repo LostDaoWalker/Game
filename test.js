@@ -1,7 +1,7 @@
 // Smoke test — cultivation spine + talents
 import { getDb, sql } from './src/core/database.js';
 import * as P from './src/core/player.js';
-import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP, TALENTS, TALENT_RARITY_WEIGHTS } from './src/core/config.js';
+import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS } from './src/core/config.js';
 import { rmSync, mkdirSync } from 'fs';
 
 let passed = 0, failed = 0;
@@ -29,6 +29,7 @@ ok('no-time tick = 0 qi', t0.qiGained === 0);
 
 // ── Tick: 1 hour of cultivation on Mortal (baseStepCost 5) ──
 // Step costs: 5, 7, 10, 15, 22, 45, 90, 180 → total to Peak = 59 qi
+sql('DELETE FROM talents WHERE player_id=?').run('test');
 sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
 const t1 = P.tickCultivation('test');
 ok('1h tick ≈ 60 qi gained', t1.qiGained === 60);
@@ -259,6 +260,51 @@ const brR = P.breakthrough('cur');
 ok('realm breakthrough kind=realm', brR.success && brR.kind === 'realm');
 ok('realm breakthrough grants 500+ stones', P.getPlayer('cur').spirit_stones >= 500);
 ok('realm breakthrough grants 2 jade',       P.getPlayer('cur').jade === 2);
+
+// ── Daoists / Rolls ──
+P.getOrCreatePlayer('roller', 'Roller');
+
+// Stone roll fails with no stones
+const rFail = P.rollDaoist('roller', 'stone');
+ok('stone roll fails without stones', !rFail.success);
+
+// Give stones, roll succeeds
+sql('UPDATE players SET spirit_stones=1000 WHERE id=?').run('roller');
+const r1 = P.rollDaoist('roller', 'stone');
+ok('stone roll success',                    r1.success);
+ok('stone roll returns daoist config',      !!DAOISTS[r1.daoist.id]);
+ok('stone deducted',                         P.getPlayer('roller').spirit_stones === 1000 - ROLLS.stoneCost);
+ok('daoist is in roster',                    P.getDaoists('roller').length === 1);
+
+// Jade roll fails with no jade
+const jFail = P.rollDaoist('roller', 'jade');
+ok('jade roll fails without jade', !jFail.success);
+
+// Give jade, roll succeeds
+sql('UPDATE players SET jade=5 WHERE id=?').run('roller');
+const j1 = P.rollDaoist('roller', 'jade');
+ok('jade roll success',      j1.success);
+ok('jade deducted',          P.getPlayer('roller').jade === 5 - ROLLS.jadeCost);
+ok('roster grew',            P.getDaoists('roller').length === 2);
+
+// rollDaoist never returns an invalid rarity in many rolls
+sql('UPDATE players SET spirit_stones=100000 WHERE id=?').run('roller');
+const rarities = new Set();
+for (let i = 0; i < 50; i++) {
+  const r = P.rollDaoist('roller', 'stone');
+  if (r.success) rarities.add(r.daoist.rarity);
+}
+ok('all rolled rarities are valid', [...rarities].every(r => ['common','uncommon','rare','epic','legendary'].includes(r)));
+
+// Stone rolls never produce legendary (rate = 0)
+sql('DELETE FROM daoists WHERE player_id=?').run('roller');
+sql('UPDATE players SET spirit_stones=100000 WHERE id=?').run('roller');
+let sawLegendary = false;
+for (let i = 0; i < 100; i++) {
+  const r = P.rollDaoist('roller', 'stone');
+  if (r.success && r.daoist.rarity === 'legendary') sawLegendary = true;
+}
+ok('stone roll never yields legendary', !sawLegendary);
 
 db.close();
 rmSync('data', { recursive: true, force: true });
