@@ -9,8 +9,7 @@ function bar(pct, width = 12) {
 function renderHome(player) {
   const v = P.getCultivationView(player);
   const lines = [
-    `${v.realm.icon} **${v.realm.name} · ${v.stage.name}**`,
-    v.stepName,
+    `${v.realm.icon} **${v.realm.name} · ${v.stage.name} · ${v.stepName}**`,
     `${bar(v.progress)} ${(v.progress * 100) | 0}%`,
   ];
   if (v.isFinalCap) lines.push('*(peak of the known path)*');
