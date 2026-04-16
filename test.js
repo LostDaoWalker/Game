@@ -1,7 +1,7 @@
-// Smoke test — cultivation spine
+// Smoke test — cultivation spine + talents
 import { getDb, sql } from './src/core/database.js';
 import * as P from './src/core/player.js';
-import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP } from './src/core/config.js';
+import { REALMS, STEP_NAMES, BREAKTHROUGH_STEP, TALENTS, TALENT_RARITY_WEIGHTS } from './src/core/config.js';
 import { rmSync, mkdirSync } from 'fs';
 
 let passed = 0, failed = 0;
@@ -166,6 +166,69 @@ ok('formatDuration 45s',     P.formatDuration(45) === '45s');
 ok('formatDuration 125s',    P.formatDuration(125) === '2m 5s');
 ok('formatDuration 3661s',   P.formatDuration(3661) === '1h 1m');
 ok('formatDuration 90000s',  P.formatDuration(90000) === '1d 1h');
+
+// ── Talents ──
+
+// Starter talent is granted on creation
+P.getOrCreatePlayer('t2', 'Talenter');
+const starterTalents = P.getTalents('t2');
+ok('starter talent granted on creation', starterTalents.length === 1);
+ok('starter talent has a known id',      !!TALENTS[starterTalents[0].id]);
+
+// rollTalent produces a valid talent with a weighted rarity
+const rolled = P.rollTalent();
+ok('rollTalent returns an id',    rolled && !!rolled.id);
+ok('rolled id exists in TALENTS', !!TALENTS[rolled.id]);
+ok('rolled rarity is a weight key', rolled.rarity in TALENT_RARITY_WEIGHTS);
+
+// Realm breakthrough grants a new talent
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0 WHERE id=?').run('t2');
+const beforeCount = P.getTalents('t2').length;
+const brTalent = P.breakthrough('t2');
+ok('realm breakthrough succeeds',          brTalent.success && brTalent.kind === 'realm');
+ok('realm breakthrough grants a talent',   !!brTalent.talent);
+ok('talent count grew after realm',         P.getTalents('t2').length === beforeCount + 1);
+
+// Stage breakthrough does NOT grant a talent
+sql('UPDATE players SET realm=1, stage=0, step=4, qi=0 WHERE id=?').run('t2');
+const beforeStageCount = P.getTalents('t2').length;
+const stageBt = P.breakthrough('t2');
+ok('stage breakthrough does not grant talent',
+   stageBt.success && stageBt.kind === 'stage' && P.getTalents('t2').length === beforeStageCount);
+
+// Talent effects flow into getEffectiveStats
+// Wipe talents, manually grant known ones to verify aggregation
+sql('DELETE FROM talents WHERE player_id=?').run('t2');
+sql("INSERT INTO talents(player_id, talent_id) VALUES (?, 'sharp_mind')").run('t2'); // +10% rate
+sql("INSERT INTO talents(player_id, talent_id) VALUES (?, 'iron_blood')").run('t2'); // +20% prowess
+sql("INSERT INTO talents(player_id, talent_id) VALUES (?, 'focused')").run('t2');    // +1 cultivate grant
+const stats = P.getEffectiveStats('t2');
+ok('talent rate bonus aggregated',    stats.rateBonusPct === 10);
+ok('talent prowess bonus aggregated', stats.prowessFromTalents === 20);
+ok('talent grant bonus aggregated',   stats.cultivateGrantBonus === 1);
+ok('effective rate reflects bonus',   Math.abs(stats.cultivationRate - 1.10) < 1e-9);
+
+// Cultivation rate boost applies to passive tick
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 60, 't2');
+const tBoost = P.tickCultivation('t2');
+ok('talent +10% rate → 1 xp/min passive rounds to 1 over 1 min', tBoost.qiGained === 1);
+// With +10%, 60 seconds = 1.1 xp → floors to 1. Test with 10 min for clarity:
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 600, 't2');
+const tBoost2 = P.tickCultivation('t2');
+ok('10 min at +10% → 11 xp', tBoost2.qiGained === 11);
+
+// Cultivate grant bonus applies to click
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0 WHERE id=?').run('t2');
+let grantMin = Infinity, grantMax = 0;
+for (let i = 0; i < 30; i++) {
+  const r = P.cultivate('t2');
+  if (r.qiGained < grantMin) grantMin = r.qiGained;
+  if (r.qiGained > grantMax) grantMax = r.qiGained;
+}
+ok('cultivate grant min shifted by +1 (was 1..3, now 2..4)', grantMin === 2);
+ok('cultivate grant max shifted by +1 (was 1..3, now 2..4)', grantMax === 4);
 
 db.close();
 rmSync('data', { recursive: true, force: true });

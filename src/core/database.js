@@ -25,6 +25,13 @@ export function getDb() {
       cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
       prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0)
     );
+    CREATE TABLE IF NOT EXISTS talents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      talent_id TEXT NOT NULL,
+      granted_at INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_talents_pid ON talents(player_id);
   `);
 
   // Additive migrations (safe to re-run)

@@ -1,5 +1,5 @@
 import { sql, tx } from './database.js';
-import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION } from './config.js';
+import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, TALENTS, TALENT_RARITY_WEIGHTS } from './config.js';
 
 // ── Player CRUD ──
 
@@ -9,7 +9,44 @@ export function getOrCreatePlayer(id, username) {
   const existing = getPlayer(id);
   if (existing) return existing;
   sql('INSERT OR IGNORE INTO players(id,username) VALUES(?,?)').run(id, username);
+  grantTalent(id); // starter talent on creation
   return getPlayer(id);
+}
+
+// ── Talents ──
+// Weighted-random rarity, uniform pick within rarity. Duplicates allowed.
+export function rollTalent() {
+  const weights = TALENT_RARITY_WEIGHTS;
+  const total = Object.values(weights).reduce((s, w) => s + w, 0);
+  let roll = Math.random() * total;
+  let chosenRarity = Object.keys(weights)[0];
+  for (const [rarity, w] of Object.entries(weights)) {
+    roll -= w;
+    if (roll <= 0) { chosenRarity = rarity; break; }
+  }
+  const pool = Object.entries(TALENTS).filter(([, t]) => t.rarity === chosenRarity);
+  if (!pool.length) return null;
+  const [id, t] = pool[Math.floor(Math.random() * pool.length)];
+  return { id, name: t.name, rarity: t.rarity, effects: t.effects };
+}
+
+export function grantTalent(playerId) {
+  const t = rollTalent();
+  if (!t) return null;
+  sql('INSERT INTO talents(player_id, talent_id) VALUES(?, ?)').run(playerId, t.id);
+  return t;
+}
+
+export function getTalents(playerId) {
+  const rows = sql('SELECT * FROM talents WHERE player_id=? ORDER BY granted_at ASC').all(playerId);
+  return rows.map(r => {
+    const t = TALENTS[r.talent_id];
+    return t ? { id: r.talent_id, rowId: r.id, granted_at: r.granted_at, ...t } : null;
+  }).filter(Boolean);
+}
+
+function sumTalentEffect(playerId, key) {
+  return getTalents(playerId).reduce((sum, t) => sum + (t.effects?.[key] || 0), 0);
 }
 
 // ── Cultivation math ──
@@ -53,7 +90,8 @@ export function tickCultivation(playerId) {
   if (!player) return null;
   const now = (Date.now() / 1000) | 0;
   const secondsElapsed = Math.max(0, now - player.cultivation_tick_at);
-  const qiGained = Math.floor(secondsElapsed * CULTIVATION.baseRatePerMin / 60);
+  const rateMult = 1 + sumTalentEffect(playerId, 'cultivationRateBonusPct') / 100;
+  const qiGained = Math.floor(secondsElapsed * CULTIVATION.baseRatePerMin * rateMult / 60);
   if (!qiGained) {
     sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(now, playerId);
     return { qiGained: 0, stepsAdvanced: 0, perfectionsReached: 0 };
@@ -78,7 +116,8 @@ export function cultivate(playerId) {
   if (!player) return { success: false, error: 'No player' };
 
   const { cultivateGrantMin: lo, cultivateGrantMax: hi } = CULTIVATION;
-  const grant = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const baseGrant = lo + Math.floor(Math.random() * (hi - lo + 1));
+  const grant = baseGrant + sumTalentEffect(playerId, 'cultivateGrantBonus');
   const a = applyQi(player, grant);
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
@@ -106,7 +145,8 @@ export function breakthrough(playerId) {
     const a = applyQi(newState, 0);
     sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, last_active=unixepoch() WHERE id=?`)
       .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, playerId);
-    return { success: true, kind: 'realm', previous: realm.name, next: nextRealm.name };
+    const talent = grantTalent(playerId); // realm breakthrough grants a new talent
+    return { success: true, kind: 'realm', previous: realm.name, next: nextRealm.name, talent };
   }
 
   const nextStage = realm.stages[p.stage + 1];
@@ -137,6 +177,23 @@ export function getCultivationView(player) {
     canBreakthrough, isFinalCap,
     canCultivate: true,
     prowessBonusPct: player.prowess_bonus_pct || 0,
+  };
+}
+
+// Effective stats including talent contributions.
+// Used by the profile screen, not the home screen (no-buff-constantly rule).
+export function getEffectiveStats(playerId) {
+  const player = getPlayer(playerId);
+  const rateBonus = sumTalentEffect(playerId, 'cultivationRateBonusPct');
+  const prowessBonus = sumTalentEffect(playerId, 'prowessBonusPct');
+  const grantBonus = sumTalentEffect(playerId, 'cultivateGrantBonus');
+  return {
+    cultivationRate: CULTIVATION.baseRatePerMin * (1 + rateBonus / 100),
+    rateBonusPct: rateBonus,
+    totalProwessBonusPct: (player.prowess_bonus_pct || 0) + prowessBonus,
+    prowessFromPerfections: player.prowess_bonus_pct || 0,
+    prowessFromTalents: prowessBonus,
+    cultivateGrantBonus: grantBonus,
   };
 }
 

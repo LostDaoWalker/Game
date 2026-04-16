@@ -66,3 +66,48 @@ export const CULTIVATION = Object.freeze({
   cultivateGrantMin: 1,       // 🔥 Cultivate grants random int xp in [min, max]
   cultivateGrantMax: 3,       //   no cooldown, no realm scaling
 });
+
+// ── Talents ──
+// Granted randomly at character creation and on every realm breakthrough.
+// Private — never shown to other players. Weighted rarity pick, then uniform pick within tier.
+export const TALENT_RARITY_WEIGHTS = Object.freeze({
+  common:    60,
+  uncommon:  25,
+  rare:      10,
+  epic:       4,
+  legendary:  1,
+});
+
+export const TALENT_RARITY_COLORS = Object.freeze({
+  common:    '⚪',
+  uncommon:  '🟢',
+  rare:      '🔵',
+  epic:      '🟣',
+  legendary: '🟡',
+});
+
+// Talent effect keys (additive, summed across all held talents):
+//   cultivationRateBonusPct   — +% to passive qi rate
+//   cultivateGrantBonus       — +flat xp to every Cultivate click
+//   prowessBonusPct           — +% to prowess (stacks with perfection-earned)
+export const TALENTS = Object.freeze({
+  // Common (60%)
+  diligent:   { name: 'Diligent',    rarity: 'common',    effects: { cultivationRateBonusPct: 5 } },
+  sturdy:     { name: 'Sturdy',      rarity: 'common',    effects: { prowessBonusPct: 5 } },
+  focused:    { name: 'Focused',     rarity: 'common',    effects: { cultivateGrantBonus: 1 } },
+
+  // Uncommon (25%)
+  sharp_mind: { name: 'Sharp Mind',  rarity: 'uncommon',  effects: { cultivationRateBonusPct: 10 } },
+  resolute:   { name: 'Resolute',    rarity: 'uncommon',  effects: { prowessBonusPct: 10 } },
+  swift_hand: { name: 'Swift Hand',  rarity: 'uncommon',  effects: { cultivateGrantBonus: 2 } },
+
+  // Rare (10%)
+  spirit_root: { name: 'Spirit Root', rarity: 'rare',     effects: { cultivationRateBonusPct: 20 } },
+  iron_blood:  { name: 'Iron Blood',  rarity: 'rare',     effects: { prowessBonusPct: 20 } },
+
+  // Epic (4%)
+  heavens_favor: { name: "Heaven's Favor", rarity: 'epic', effects: { cultivationRateBonusPct: 25, prowessBonusPct: 10 } },
+
+  // Legendary (1%)
+  dao_prodigy: { name: 'Dao Prodigy', rarity: 'legendary', effects: { cultivationRateBonusPct: 50, prowessBonusPct: 25, cultivateGrantBonus: 2 } },
+});
