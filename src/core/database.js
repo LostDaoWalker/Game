@@ -20,7 +20,7 @@ export function getDb() {
       last_active INTEGER NOT NULL DEFAULT (unixepoch()),
       realm INTEGER NOT NULL DEFAULT 0 CHECK(realm >= 0),
       stage INTEGER NOT NULL DEFAULT 0 CHECK(stage >= 0),
-      step INTEGER NOT NULL DEFAULT 0 CHECK(step >= 0 AND step <= 7),
+      step INTEGER NOT NULL DEFAULT 0 CHECK(step >= 0),
       qi INTEGER NOT NULL DEFAULT 0 CHECK(qi >= 0),
       cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
       prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0),

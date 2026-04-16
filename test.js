@@ -71,19 +71,28 @@ ok('advanced to Greater Perfection (step 6)',    p5.step === 6);
 ok('prowess +5% on reaching Greater',            p5.prowess_bonus_pct === 5);
 ok('charge +1 on reaching Greater',              p5.tribulation_charge === 1);
 
-// ── Extreme Perfection cap ──
-// Place at step 7 with 0 qi. Let it tick for a long time. Qi should cap at step 7 cost.
-sql('UPDATE players SET realm=0, stage=0, step=7, qi=0, cultivation_tick_at=? WHERE id=?')
-  .run(((Date.now() / 1000) | 0) - 10 * 3600, 'test');
+// ── Qi flows past Extreme Perfection (step 7) into Absolute Perfection (step 8) ──
+// Place at step 7 with 0 qi. Long tick should push through step 7 (cost 180) into step 8.
+sql('UPDATE players SET realm=0, stage=0, step=7, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 4 * 3600, 'test'); // 240 xp, enough to clear step 7
 P.tickCultivation('test');
-const p7 = P.getPlayer('test');
-ok('step stays at Extreme Perfection (7)', p7.step === 7);
-ok('qi capped at step 7 cost',             p7.qi === P.stepCost(0, 7));
+const pPastExtreme = P.getPlayer('test');
+ok('qi advances past Extreme Perfection into Absolute', pPastExtreme.step === 8);
+ok('Absolute grants +5% prowess',                       pPastExtreme.prowess_bonus_pct === 5);
+ok('Absolute grants +1 charge',                         pPastExtreme.tribulation_charge === 1);
+
+// ── Qi caps at Absolute Perfection (step 8), not earlier ──
+sql('UPDATE players SET realm=0, stage=0, step=8, qi=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 100 * 3600, 'test');
+P.tickCultivation('test');
+const pAbsCap = P.getPlayer('test');
+ok('step stays at Absolute Perfection (8)', pAbsCap.step === 8);
+ok('qi caps at Absolute Perfection cost',   pAbsCap.qi === P.stepCost(0, 8));
 
 // ── Final-cap detection ──
-// Push to last realm, last stage, Extreme Perfection, qi maxed
-sql('UPDATE players SET realm=?, stage=?, step=7, qi=? WHERE id=?')
-  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, P.stepCost(REALMS.length - 1, 7), 'test');
+// Push to last realm, last stage, Absolute Perfection, qi maxed
+sql('UPDATE players SET realm=?, stage=?, step=8, qi=? WHERE id=?')
+  .run(REALMS.length - 1, REALMS[REALMS.length - 1].stages.length - 1, P.stepCost(REALMS.length - 1, 8), 'test');
 const vFinal = P.getCultivationView(P.getPlayer('test'));
 ok('isFinalCap at summit', vFinal.isFinalCap);
 
@@ -94,52 +103,48 @@ sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=100, t
 const tRate = P.tickCultivation('test');
 ok('prowess bonus does NOT affect cultivation rate (1 min → 1 qi)', tRate.qiGained === 1);
 
-// Full perfection of a stage = +15% prowess (3 perfection steps × 5%)
+// Full perfection of a stage = +20% prowess (4 perfection steps × 5%: Lesser, Greater, Extreme, Absolute)
 sql('UPDATE players SET realm=0, stage=0, step=4, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
-  .run(((Date.now() / 1000) | 0) - 10 * 3600, 'test');
+  .run(((Date.now() / 1000) | 0) - 20 * 3600, 'test'); // generous walltime to clear all perfections
 P.tickCultivation('test');
 const pFull = P.getPlayer('test');
-ok('full perfection of a stage = +15% prowess', pFull.prowess_bonus_pct === 15);
-ok('full perfection of a stage = +3 charge',    pFull.tribulation_charge === 3);
+ok('full perfection of a stage = +20% prowess', pFull.prowess_bonus_pct === 20);
+ok('full perfection of a stage = +4 charge',    pFull.tribulation_charge === 4);
 
 // View exposes prowessBonusPct
 const vProwess = P.getCultivationView(pFull);
-ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 15);
+ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 20);
 
-// ── Meditate (spammable, no cooldown) ──
-// Reset to fresh state at Mortal realm
+// ── Cultivate button (spammable, no cooldown, random 1-3 xp) ──
 sql(`UPDATE players SET
       realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0, tribulation_charge=0,
       cultivation_tick_at=?
      WHERE id=?`).run(((Date.now() / 1000) | 0), 'test');
 
-// First meditate grants flat 5 xp (no realm scaling)
-const m1 = P.meditate('test');
-ok('meditate success',            m1.success);
-ok('meditate grants flat 5 xp',   m1.qiGained === 5);
-// 5 xp covers Entry (cost 5), step=1 (Early), qi=0
-const pm1 = P.getPlayer('test');
-ok('step advanced to Early after first click', pm1.step === 1);
-ok('qi=0 remaining',                            pm1.qi === 0);
+// Grant is random in [1, 3]
+for (let i = 0; i < 20; i++) {
+  const r = P.cultivate('test');
+  ok('cultivate grant in [1, 3]', r.success && r.qiGained >= 1 && r.qiGained <= 3);
+}
 
-// Spam works without cooldown — many rapid clicks all succeed
-for (let i = 0; i < 15; i++) P.meditate('test');
-const pm2 = P.getPlayer('test');
-ok('spamming clicks keeps progressing', pm2.step >= 4 || pm2.stage > 0);
+// Spam keeps progressing
+for (let i = 0; i < 200; i++) P.cultivate('test');
+const pmSpam = P.getPlayer('test');
+ok('heavy spam keeps progressing', pmSpam.step >= 4 || pmSpam.stage > 0);
 
-// Grant does NOT scale with realm — Martial Artist still grants 5 xp
+// Grant does NOT scale with realm
 sql('UPDATE players SET realm=1, stage=0, step=0, qi=0 WHERE id=?').run('test');
-const mMA = P.meditate('test');
-ok('Martial Artist meditate still grants flat 5 xp', mMA.qiGained === 5);
+const mMA = P.cultivate('test');
+ok('MA cultivate grant still in [1, 3]', mMA.qiGained >= 1 && mMA.qiGained <= 3);
 
-// Meditate blocked at Extreme Perfection cap
-sql(`UPDATE players SET realm=0, stage=0, step=7, qi=? WHERE id=?`).run(P.stepCost(0, 7), 'test');
-const mCap = P.meditate('test');
-ok('meditate blocked at stage Extreme Perfection cap', !mCap.success);
+// Cultivate blocked at Absolute Perfection cap
+sql(`UPDATE players SET realm=0, stage=0, step=8, qi=? WHERE id=?`).run(P.stepCost(0, 8), 'test');
+const mCap = P.cultivate('test');
+ok('cultivate blocked at stage Absolute Perfection cap', !mCap.success);
 
-// View exposes canMeditate correctly
+// View exposes canCultivate correctly
 const vCap = P.getCultivationView(P.getPlayer('test'));
-ok('view: canMeditate=false at cap', !vCap.canMeditate);
+ok('view: canCultivate=false at cap', !vCap.canCultivate);
 
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');

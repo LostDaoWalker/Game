@@ -20,10 +20,10 @@ function buildUI(player) {
   const v = P.getCultivationView(player);
   return [new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId('meditate')
-      .setLabel('🧘 Meditate')
+      .setCustomId('cultivate')
+      .setLabel('🔥 Cultivate')
       .setStyle(ButtonStyle.Success)
-      .setDisabled(!v.canMeditate),
+      .setDisabled(!v.canCultivate),
     new ButtonBuilder()
       .setCustomId('breakthrough')
       .setLabel('⚡ Breakthrough')
@@ -46,9 +46,9 @@ export async function handleButton(interaction) {
 
   let banner = null;
 
-  if (interaction.customId === 'meditate') {
-    const r = P.meditate(id);
-    banner = r.success ? `🧘 +${r.qiGained} xp` : `⚠️ ${r.error}`;
+  if (interaction.customId === 'cultivate') {
+    const r = P.cultivate(id);
+    banner = r.success ? `🔥 +${r.qiGained} xp` : `⚠️ ${r.error}`;
   } else if (interaction.customId === 'breakthrough') {
     const r = P.breakthrough(id);
     P.tickCultivation(id);
