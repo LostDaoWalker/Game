@@ -1,18 +1,18 @@
 # TIANMING — Agent Context
 
-> **Read [VISION.md](./VISION.md) first.** It's the contract every change is measured against. This file describes the codebase; VISION.md describes the game.
+> **Read [VISION.md](./VISION.md) first.** It is the contract every change is measured against. This file describes the codebase; VISION.md describes the game.
 
-A Discord RPG bot where players cultivate from mortal to immortal. Xianxia-themed idle game. Single-view UI, one button (`🔥 CULTIVATE`), everything else is contextual dropdowns.
+A xianxia cultivation Discord bot. Single slash command (`/tianming`) opens a screen; navigation happens via buttons and dropdowns.
+
+**Status:** pre-implementation reset. Only the Discord skeleton lives here. Game systems are designed against VISION.md, one at a time, before any code is written for them.
 
 ## Run
 
 ```bash
 ./run.sh              # first-run helper — copies .env.example, installs, deploys, starts
-npm run deploy        # register /tianming slash command
-npm start             # start bot
-npm test              # smoke test (~50 checks, wipes data/ — don't run on prod)
-./cli.js sim 20       # render 20 grind frames to data/sim/ for visual QA
-./cli.js card         # render a card for each ancestor to data/
+npm run deploy        # register /tianming
+npm start             # start the bot
+npm test              # schema smoke test (wipes data/ on run)
 ```
 
 Required env: `DISCORD_TOKEN`, `CLIENT_ID`. Optional: `GUILD_ID` (instant slash deploy).
@@ -21,61 +21,31 @@ Required env: `DISCORD_TOKEN`, `CLIENT_ID`. Optional: `GUILD_ID` (instant slash 
 
 ```
 src/
-  index.js               bot entry, Discord wiring
-  deploy-commands.js     register /tianming
-  bot/interactions.js    all Discord handlers, UI builder
-  core/config.js         all game data (single source of truth)
-  core/database.js       SQLite schema + migrations
-  core/player.js         game logic (combat, grind, traits, ancestors)
-  rendering/canvas.js    primitives: panel, bar, text, layout
-  rendering/views/grind.js   the only view
-  rendering/views/card.js    player trading card (used by grind view)
-cli.js                   dev CLI: start, test, sim, card, db, reset, stats
+  index.js               bot entry — Discord client, event routing
+  deploy-commands.js     registers /tianming
+  bot/interactions.js    handleCommand / handleButton / handleSelectMenu (skeleton)
+  core/database.js       SQLite — just a players table so far
+cli.js                   dev CLI (start / dev / deploy / test)
 test.js                  smoke test
+run.sh                   first-run helper
+VISION.md                game design contract
+CLAUDE.md                this file
 ```
 
-## Key invariants
-
-- **Single view**: `grind.js` is the only view rendered. No tabs, no sub-views.
-- **HP is always full** between fights. No healing mechanic. No HP persistence.
-- **No stamina = no cultivation.** Stamina regens 1 per 5 min (see `ECO.staminaRegen`).
-- **Gold is gold.** No bank, no duels, no theft. Earned only through combat.
-- **One of each**: one button (CULTIVATE), one currency (gold), one enemy per fight (auto-picks best for level).
-- **Ancestor favor only grows on wins.** Switching ancestors resets favor to 0.
-- **Equipment auto-equips** if total stat-sum beats current slot occupant. Junk auto-sells in grind.
-
-## Game data (config.js)
-
-- `ANCESTORS` — 5 patrons with 3 boons each unlocked at favor 50/200/500
-- `ENEMIES` — 12 enemies across 4 zones (neighborhood → topfloor, internal IDs kept for DB continuity)
-- `EQUIPMENT` — 29 items, 5 slots, 5 rarities (60/25/10/4/1% weights)
-- `SKILLS` — 8 cultivation arts, 3 types (offensive/defensive/utility), max level 3
-
-## Balancing knobs (config.js)
-
-- `LEVEL.xpBase` / `xpMult` — XP curve. Currently 80 × 1.3^(n-1).
-- `LEVEL.hp/atk/def/spd/str` — stat gains per level.
-- `ECO.startGold` / `maxStamina` / `staminaRegen` / `sellMult` — economy tuning.
-- `RARITIES[r].weight` — loot drop odds.
-- Enemy `scaling` — difficulty growth per level above minLevel.
+No config.js, no player logic, no rendering yet — they will be added as each system is designed.
 
 ## Conventions
 
 - ES modules (`import`/`export`). Node 20+.
-- All game data lives in `config.js` — never hardcode names/stats in logic files.
-- Internal IDs (`enemyId`, `itemId`, `ancestorId`) are stable — never rename them (DB continuity). Display names can change freely.
-- When adding a column, update the migration block in `database.js` (`ALTER TABLE ADD COLUMN IF NOT EXISTS` pattern). Hard-cutover removed columns with `DROP COLUMN`.
-- Rendering primitives (`panel`, `bar`, `txt`, `btn`, `rr`) live in `canvas.js`. Views should compose them, not duplicate canvas calls.
-- JPEG quality 90 for all rendered images (3× faster than PNG, Discord renders both).
+- All game data will live in a dedicated config module (single source of truth) — don't hardcode names/stats inline.
+- Internal IDs (talent IDs, daoist IDs, etc.) are stable once live; display names can change freely.
+- Schema changes: add migrations (`ALTER TABLE ADD COLUMN IF NOT EXISTS` pattern). Remove columns with `DROP COLUMN` only during a hard cutover of a feature.
 
-## Common gotchas
+## Change discipline
 
-- `better-sqlite3` + SQLite 3.35+ supports `ALTER TABLE DROP COLUMN`. Older SQLite won't.
-- Discord select menus cap at 25 options — slice before passing.
-- Canvas `textBaseline = 'top'` is set once; don't re-set per draw.
-- `createCanvas` is expensive — reuse via `_artCache` / `_bgData` patterns already in code.
-- Combat simulation caps at 30 rounds to prevent infinite loops with high-def foes.
+VISION.md lists the rules. The shortest version:
 
-## Hard cutover
-
-When removing a system, remove everything that served it — code, columns, files, imports, UI, comments, scripts, docs. Migrations in the same commit. Grep the repo. Delete, don't deprecate.
+- Live features are load-bearing — don't delete what represents player time.
+- Removal requires replacement; cuts name what fills the role.
+- Four-question check applies to anything beyond a bug fix (see VISION.md).
+- Ask when unsure.
