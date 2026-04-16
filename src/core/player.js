@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, ANCESTORS, CLASSES } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, ANCESTORS } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 const floorZero = v => Math.max(0, v | 0);
@@ -190,12 +190,6 @@ export function setAncestor(playerId, ancestorId) {
   return { success: true, ancestor: ANCESTORS[ancestorId] };
 }
 
-export function setClass(playerId, classId) {
-  if (!CLASSES[classId]) return { success: false, error: 'Unknown cultivation path' };
-  upd(playerId, { class: classId });
-  return { success: true, class: CLASSES[classId] };
-}
-
 function getAncestorBoons(player) {
   const ancestor = ANCESTORS[player.ancestor];
   const b = { attack: 0, defense: 0, hp: 0, speed: 0, strength: 0 };
@@ -211,16 +205,14 @@ function getAncestorBoons(player) {
 function getEffectiveStats(playerId) {
   const player = getPlayer(playerId);
   const eq = getEquipmentBonuses(playerId);
-  const cls = CLASSES[player.class]?.bonus || {};
   const anc = getAncestorBoons(player);
-  const get = k => (cls[k] || 0);
   return {
     hp: player.hp,
-    max_hp: player.max_hp + eq.hp + get('hp') + anc.hp,
-    attack: player.attack + eq.attack + get('attack') + anc.attack,
-    defense: player.defense + eq.defense + get('defense') + anc.defense,
-    speed: player.speed + eq.speed + get('speed') + anc.speed,
-    strength: player.strength + eq.strength + get('strength') + anc.strength,
+    max_hp: player.max_hp + eq.hp + anc.hp,
+    attack: player.attack + eq.attack + anc.attack,
+    defense: player.defense + eq.defense + anc.defense,
+    speed: player.speed + eq.speed + anc.speed,
+    strength: player.strength + eq.strength + anc.strength,
   };
 }
 

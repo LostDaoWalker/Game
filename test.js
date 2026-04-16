@@ -1,7 +1,7 @@
 // Smoke test — cultivation bot, current systems only
 import { getDb } from './src/core/database.js';
 import * as P from './src/core/player.js';
-import { EQUIPMENT, SKILLS, ENEMIES, ANCESTORS, CLASSES, ZONES } from './src/core/config.js';
+import { EQUIPMENT, SKILLS, ENEMIES, ANCESTORS, ZONES } from './src/core/config.js';
 import { renderGrind } from './src/rendering/views/grind.js';
 import { renderCard } from './src/rendering/views/card.js';
 import { rmSync, mkdirSync } from 'fs';
@@ -20,12 +20,6 @@ ok('player created', player?.id === 'test');
 ok('starting gold', player.gold === 100);
 ok('starting level', player.level === 1);
 ok('default ancestor', player.ancestor === 'azure_dragon');
-ok('default class', player.class === 'sword');
-
-// ── Class ──
-ok('set class body', P.setClass('test', 'body').success);
-ok('bad class rejected', !P.setClass('test', 'unknown').success);
-ok('class persisted', P.getPlayer('test').class === 'body');
 
 // ── Ancestor ──
 ok('set ancestor white_tiger', P.setAncestor('test', 'white_tiger').success);
@@ -85,7 +79,6 @@ for (const [enemyId, enemy] of Object.entries(ENEMIES)) {
 }
 ok('8 skills', Object.keys(SKILLS).length === 8);
 ok('5 ancestors', Object.keys(ANCESTORS).length === 5);
-ok('3 classes', Object.keys(CLASSES).length === 3);
 ok('29 equipment items', Object.keys(EQUIPMENT).length === 29);
 
 // ── Combat balance — 50 fights ──

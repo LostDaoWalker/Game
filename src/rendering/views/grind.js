@@ -33,11 +33,17 @@ export function renderGrind(player, result) {
     cy += 16;
   }
 
-  // XP bar at bottom
-  const barY = GH - 40;
-  R.bar(ctx, pad, barY, GW - pad * 2, 5, result.xpPercent, C.xpBar);
-  R.txt(ctx, `${(result.xpPercent * 100) | 0}% to Lv.${player.level + 1}`, pad, barY + 10, { s: 9, c: C.textDim });
-  R.txt(ctx, `❤${player.hp}/${player.max_hp}  ⚡${player.stamina}/${player.max_stamina}`, GW - pad, barY + 10, { s: 9, c: C.textDim, a: 'right' });
+  // XP + stamina bars at bottom
+  const barW = GW - pad * 2;
+  const xpY = GH - 68;
+  R.txt(ctx, 'XP', pad, xpY, { s: 10, c: C.textMuted });
+  R.txt(ctx, `${(result.xpPercent * 100) | 0}% → Lv.${player.level + 1}`, pad + barW, xpY, { s: 10, c: C.xpBar, a: 'right' });
+  R.bar(ctx, pad, xpY + 13, barW, 7, result.xpPercent, C.xpBar);
+
+  const stY = GH - 34;
+  R.txt(ctx, 'STAMINA', pad, stY, { s: 10, c: C.textMuted });
+  R.txt(ctx, `${player.stamina}/${player.max_stamina}`, pad + barW, stY, { s: 10, c: C.staminaBar, a: 'right' });
+  R.bar(ctx, pad, stY + 13, barW, 7, player.stamina / player.max_stamina, C.staminaBar);
 
   return R.toBuffer(canvas);
 }

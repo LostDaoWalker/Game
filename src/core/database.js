@@ -10,6 +10,7 @@ const DEAD_COLUMNS = [
   'banked_gold', 'daily_streak', 'last_daily', 'win_streak', 'best_streak',
   'milestones', 'pvp_wins', 'pvp_losses', 'raids_completed', 'bosses_killed',
   'avatar', 'bloodline', 'physique', 'talent', 'networth', 'peak_networth',
+  'class',
 ];
 const DEAD_TABLES = ['assets', 'crew', 'combat_log'];
 
@@ -40,8 +41,7 @@ export function getDb() {
       wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
       pending_skill_picks INTEGER NOT NULL DEFAULT 0 CHECK(pending_skill_picks >= 0),
       ancestor TEXT NOT NULL DEFAULT 'azure_dragon',
-      ancestor_favor INTEGER NOT NULL DEFAULT 0,
-      class TEXT NOT NULL DEFAULT 'sword'
+      ancestor_favor INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS equipment (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,7 +71,6 @@ export function getDb() {
   const cols = new Set(db.pragma('table_info(players)').map(c => c.name));
   if (!cols.has('ancestor'))       db.exec("ALTER TABLE players ADD COLUMN ancestor TEXT NOT NULL DEFAULT 'azure_dragon'");
   if (!cols.has('ancestor_favor')) db.exec("ALTER TABLE players ADD COLUMN ancestor_favor INTEGER NOT NULL DEFAULT 0");
-  if (!cols.has('class'))          db.exec("ALTER TABLE players ADD COLUMN class TEXT NOT NULL DEFAULT 'sword'");
   for (const col of DEAD_COLUMNS) if (cols.has(col)) db.exec(`ALTER TABLE players DROP COLUMN ${col}`);
   for (const t of DEAD_TABLES) db.exec(`DROP TABLE IF EXISTS ${t}`);
   db.exec('DROP INDEX IF EXISTS idx_cl_pid');

@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { ANCESTORS, CLASSES } from '../../core/config.js';
+import { ANCESTORS } from '../../core/config.js';
 import * as R from '../canvas.js';
 
 const CARD_W = 350, CARD_H = 490;
@@ -64,11 +64,11 @@ export function drawCard(ctx, centerX, centerY, player) {
   ctx.textAlign = 'center';
   ctx.fillText(player.username, centerX, y + 14);
 
-  // Level + class
-  const cls = CLASSES[player.class] || CLASSES.sword;
+  // Level + ancestor
+  const anc = ANCESTORS[player.ancestor] || ANCESTORS.azure_dragon;
   ctx.fillStyle = '#d4d4d8';
   ctx.font = "12px 'Courier New',monospace";
-  ctx.fillText(`${cls.icon} Lv.${player.level} ${cls.name}`, centerX, y + 42);
+  ctx.fillText(`Lv.${player.level} · ${anc.icon} ${anc.name}`, centerX, y + 42);
 
   // Gold — bottom center
   ctx.fillStyle = '#f5c542';

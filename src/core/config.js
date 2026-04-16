@@ -112,13 +112,6 @@ export const ECO = Object.freeze({ startGold: 100, maxStamina: 10, staminaRegen:
 
 export const CANVAS = Object.freeze({ width: 800, height: 500 });
 
-// ── Classes (Three Paths of Cultivation) — player-chosen, stat-shape choice ──
-export const CLASSES = Object.freeze({
-  sword: { name: 'Sword Path', icon: '⚔️', desc: 'Masters of the blade — fast, precise, lethal', bonus: { attack: 4, speed: 1 } },
-  body:  { name: 'Body Path',  icon: '💪', desc: 'Tempered flesh — unbreakable will', bonus: { defense: 2, hp: 25, strength: 2 } },
-  qi:    { name: 'Qi Path',    icon: '✨', desc: 'Spiritual masters — guided by flowing energy', bonus: { speed: 3, strength: 2 } },
-});
-
 // ── Ancestors — patron worship, build favor from wins + level-ups for boons ──
 export const ANCESTORS = Object.freeze({
   azure_dragon: {

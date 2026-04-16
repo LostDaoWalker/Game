@@ -44,7 +44,6 @@ test.js                  smoke test
 
 ## Game data (config.js)
 
-- `CLASSES` — 3 cultivation paths (Sword/Body/Qi), player-chosen stat-shape
 - `ANCESTORS` — 5 patrons with 3 boons each unlocked at favor 50/200/500
 - `ENEMIES` — 12 enemies across 4 zones (neighborhood → topfloor, internal IDs kept for DB continuity)
 - `EQUIPMENT` — 29 items, 5 slots, 5 rarities (60/25/10/4/1% weights)
