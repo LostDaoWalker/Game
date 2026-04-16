@@ -87,6 +87,25 @@ sql('UPDATE players SET realm=?, stage=?, step=7, qi=? WHERE id=?')
 const vFinal = P.getCultivationView(P.getPlayer('test'));
 ok('isFinalCap at summit', vFinal.isFinalCap);
 
+// ── Essence cultivation-rate bonus (additive +1% per essence point) ──
+// Rate = 1 qi/min × (1 + essence × 0.01). At 100 essence: 2 qi/min.
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, essence=100, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 60, 'test');
+const tBoost = P.tickCultivation('test');
+ok('essence 100 doubles qi gain (1 min → 2 qi)', tBoost.qiGained === 2);
+
+// At essence 50: +50% rate. 2 min → 3 qi (floor of 3.0)
+sql('UPDATE players SET step=0, qi=0, essence=50, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 120, 'test');
+const tHalf = P.tickCultivation('test');
+ok('essence 50 with 2 min → 3 qi', tHalf.qiGained === 3);
+
+// View reports the rate bonus
+sql('UPDATE players SET step=0, qi=0, essence=25 WHERE id=?').run('test');
+const vRate = P.getCultivationView(P.getPlayer('test'));
+ok('view reports +25% rate bonus at essence 25', vRate.rateBonusPct === 25);
+ok('view reports effective rate 1.25 qi/min',    Math.abs(vRate.rate - 1.25) < 1e-9);
+
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');
 ok('formatDuration 125s',    P.formatDuration(125) === '2m 5s');

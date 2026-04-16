@@ -14,6 +14,11 @@ export function getOrCreatePlayer(id, username) {
 
 // ── Cultivation math ──
 
+// Effective qi rate per minute, including essence bonus (additive).
+export function cultivationRate(player) {
+  return CULTIVATION.baseRatePerMin * (1 + (player.essence || 0) * CULTIVATION.essenceRateBonus);
+}
+
 export function stepCost(realmIndex, stepIndex) {
   const realm = REALMS[realmIndex];
   if (!realm) return Infinity;
@@ -32,7 +37,7 @@ export function tickCultivation(playerId) {
   if (!player) return null;
   const now = (Date.now() / 1000) | 0;
   const secondsElapsed = Math.max(0, now - player.cultivation_tick_at);
-  const qiGained = Math.floor(secondsElapsed * CULTIVATION.baseRatePerMin / 60);
+  const qiGained = Math.floor(secondsElapsed * cultivationRate(player) / 60);
   // Always advance the tick clock so we don't accumulate forever on zero gain
   if (!qiGained) {
     sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(now, playerId);
@@ -106,7 +111,8 @@ export function getCultivationView(player) {
   const atMax = player.step === STEP_NAMES.length - 1;
   const progress = atMax && player.qi >= cost ? 1 : Math.max(0, Math.min(1, player.qi / cost));
   const remaining = Math.max(0, cost - player.qi);
-  const etaSeconds = (atMax && player.qi >= cost) ? 0 : Math.ceil(remaining * 60 / CULTIVATION.baseRatePerMin);
+  const rate = cultivationRate(player);
+  const etaSeconds = (atMax && player.qi >= cost) ? 0 : Math.ceil(remaining * 60 / rate);
   const canBreakthrough = player.step >= BREAKTHROUGH_STEP;
   const isFinalCap = isAtTopOfRealm(player) && isAtFinalRealm(player) && atMax && player.qi >= cost;
   return {
@@ -114,6 +120,7 @@ export function getCultivationView(player) {
     stepIndex: player.step,
     qi: player.qi, qiCost: cost, progress,
     canBreakthrough, isFinalCap, etaSeconds,
+    rate, rateBonusPct: Math.round((player.essence || 0) * CULTIVATION.essenceRateBonus * 100),
     essence: player.essence, tribulationCharge: player.tribulation_charge,
   };
 }
