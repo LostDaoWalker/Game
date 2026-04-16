@@ -1,5 +1,5 @@
 import { createCanvas } from '@napi-rs/canvas';
-import { AVATARS, FRAME_TIERS } from '../../core/config.js';
+import { ANCESTORS, FRAME_TIERS } from '../../core/config.js';
 import * as R from '../canvas.js';
 
 const CARD_W = 350, CARD_H = 490;
@@ -12,10 +12,10 @@ function getFrame(networth) {
 
 // ── Full-bleed avatar art cache ──
 const _artCache = new Map();
-function getAvatarArt(avatarId) {
-  let cached = _artCache.get(avatarId);
+function getAncestorArt(ancestorId) {
+  let cached = _artCache.get(ancestorId);
   if (cached) return cached;
-  const config = AVATARS[avatarId] || AVATARS.default;
+  const config = ANCESTORS[ancestorId] || ANCESTORS.azure_dragon;
   const art = createCanvas(CARD_W, CARD_H);
   const ctx = art.getContext('2d');
   ctx.fillStyle = config.bg; ctx.fillRect(0, 0, CARD_W, CARD_H);
@@ -36,7 +36,7 @@ function getAvatarArt(avatarId) {
   const glow = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.8);
   glow.addColorStop(0, R.rgba(config.accent, 0.1)); glow.addColorStop(1, 'transparent');
   ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
-  _artCache.set(avatarId, art);
+  _artCache.set(ancestorId, art);
   return art;
 }
 
@@ -53,7 +53,7 @@ export function drawCard(ctx, centerX, centerY, player) {
   // Full-bleed art clipped to card
   ctx.save();
   R.rr(ctx, x, y, CARD_W, CARD_H, 12); ctx.clip();
-  ctx.drawImage(getAvatarArt(player.ancestor || player.avatar), x, y);
+  ctx.drawImage(getAncestorArt(player.ancestor), x, y);
 
   // Top scrim for username
   const topScrim = ctx.createLinearGradient(x, y, x, y + 60);

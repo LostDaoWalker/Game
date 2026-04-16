@@ -1,27 +1,25 @@
 #!/usr/bin/env node
-// HALCYON CLI — one entrypoint for everything
+// TIANMING CLI — one entrypoint for everything
 const cmd = process.argv[2];
 const args = process.argv.slice(3);
 
 const HELP = `
-HALCYON CLI
+TIANMING CLI
 
-  ./cli.js start           Start the bot
-  ./cli.js dev             Start with hot reload
-  ./cli.js deploy          Deploy /halcyon slash command
-  ./cli.js test            Run 120+ tests
-  ./cli.js preview         Render all views to data/
-  ./cli.js sim [n]         Simulate n grinds, print progression
-  ./cli.js card [avatar]   Render a trading card to data/card.jpg
-  ./cli.js db [playerId]   Dump player state from DB
-  ./cli.js reset [id|all]  Reset a player or entire DB
-  ./cli.js stats           Codebase + performance stats
+  ./cli.js start            Start the bot
+  ./cli.js dev              Start with hot reload
+  ./cli.js deploy           Deploy /tianming slash command
+  ./cli.js test             Run smoke tests
+  ./cli.js sim [n]          Simulate n grinds, render cards
+  ./cli.js card [ancestor]  Render a trading card to data/card.jpg
+  ./cli.js db [playerId]    Dump player state from DB
+  ./cli.js reset [id|all]   Reset a player or entire DB
+  ./cli.js stats            Codebase + performance stats
 `;
 
 if (!cmd || cmd === 'help' || cmd === '-h') { console.log(HELP); process.exit(0); }
 
-// Commands that need game imports
-const gameCommands = new Set(['sim', 'card', 'db', 'reset', 'stats', 'preview']);
+const gameCommands = new Set(['sim', 'card', 'db', 'reset', 'stats']);
 
 if (gameCommands.has(cmd)) {
   const { getDb } = await import('./src/core/database.js');
@@ -35,12 +33,11 @@ if (gameCommands.has(cmd)) {
     mkdirSync('data/sim', { recursive: true });
     getDb();
     P.getOrCreatePlayer('sim', 'SimPlayer');
-    console.log(' #   LVL  GOLD     NET      STREAK  IMAGE');
-    console.log('───  ───  ───────  ───────  ──────  ─────');
+    console.log(' #   LVL  GOLD     NET      IMAGE');
+    console.log('───  ───  ───────  ───────  ─────');
     for (let i = 0; i < count; i++) {
       const result = P.grind('sim');
       const p = result.player;
-      // Render grind result at each step
       const grindFile = `data/sim/grind_${String(i + 1).padStart(3, '0')}.jpg`;
       writeFileSync(grindFile, renderGrind(p, result));
       console.log(
@@ -48,39 +45,34 @@ if (gameCommands.has(cmd)) {
         `${String(p.level).padStart(3)}  ` +
         `${String(p.gold).padStart(7)}  ` +
         `${String(p.networth).padStart(7)}  ` +
-        `${String(p.win_streak).padStart(6)}  ` +
         grindFile
       );
     }
-    // Final card
     const final = P.getPlayer('sim');
     writeFileSync('data/sim/final_card.jpg', renderCard(final));
     console.log(`\nFinal: Lv.${final.level} | ${final.gold}g | ${final.networth} net`);
-    console.log(`Card:  data/sim/final_card.jpg`);
-    console.log(`Grind: data/sim/grind_001.jpg → grind_${String(count).padStart(3, '0')}.jpg`);
     getDb().close();
 
   } else if (cmd === 'card') {
     const { renderCard } = await import('./src/rendering/views/card.js');
-    const { AVATARS } = await import('./src/core/config.js');
+    const { ANCESTORS } = await import('./src/core/config.js');
     const P = await import('./src/core/player.js');
     const { writeFileSync, mkdirSync } = await import('fs');
     mkdirSync('data', { recursive: true });
     getDb();
     P.getOrCreatePlayer('cardpreview', 'Preview');
-    const avatarId = args[0];
-    if (avatarId) {
-      P.setAvatar('cardpreview', avatarId);
+    const ancestorId = args[0];
+    if (ancestorId) {
+      P.setAncestor('cardpreview', ancestorId);
       writeFileSync('data/card.jpg', renderCard(P.getPlayer('cardpreview')));
-      console.log(`✓ data/card.jpg (avatar: ${avatarId})`);
+      console.log(`✓ data/card.jpg (ancestor: ${ancestorId})`);
     } else {
-      // Render every avatar
-      for (const id of Object.keys(AVATARS)) {
-        P.setAvatar('cardpreview', id);
+      for (const id of Object.keys(ANCESTORS)) {
+        P.setAncestor('cardpreview', id);
         writeFileSync(`data/card_${id}.jpg`, renderCard(P.getPlayer('cardpreview')));
         console.log(`  ✓ data/card_${id}.jpg`);
       }
-      console.log(`\n${Object.keys(AVATARS).length} avatars rendered`);
+      console.log(`\n${Object.keys(ANCESTORS).length} ancestors rendered`);
     }
     getDb().close();
 
@@ -102,8 +94,6 @@ if (gameCommands.has(cmd)) {
       console.log('\nEquipment:', P.getAllEquipment(playerId).length, 'items');
       console.log('Equipped:', P.getEquippedItems(playerId).map(r => r.item_id).join(', ') || 'none');
       console.log('Skills:', P.getPlayerSkills(playerId).map(r => `${r.skill_id} Lv.${r.level}`).join(', ') || 'none');
-      console.log('Assets:', P.getPlayerAssets(playerId).map(r => r.asset_id).join(', ') || 'none');
-      console.log('Crew:', P.getPlayerCrew(playerId).map(r => r.crew_id).join(', ') || 'none');
     }
     db.close();
 
@@ -111,12 +101,12 @@ if (gameCommands.has(cmd)) {
     const target = args[0];
     const db = getDb();
     if (target === 'all') {
-      for (const table of ['players', 'equipment', 'skills', 'combat_log', 'skill_offers', 'assets', 'crew']) {
+      for (const table of ['players', 'equipment', 'skills', 'combat_log', 'skill_offers']) {
         db.prepare(`DELETE FROM ${table}`).run();
       }
       console.log('✓ All data wiped');
     } else if (target) {
-      for (const table of ['equipment', 'skills', 'combat_log', 'skill_offers', 'assets', 'crew']) {
+      for (const table of ['equipment', 'skills', 'combat_log', 'skill_offers']) {
         db.prepare(`DELETE FROM ${table} WHERE player_id=?`).run(target);
       }
       db.prepare('DELETE FROM players WHERE id=?').run(target);
@@ -127,37 +117,30 @@ if (gameCommands.has(cmd)) {
     db.close();
 
   } else if (cmd === 'stats') {
-    const { readdirSync, statSync } = await import('fs');
+    const { statSync } = await import('fs');
     const { execSync } = await import('child_process');
 
-    // File count + lines
     const files = execSync('find src -name "*.js"').toString().trim().split('\n');
     const totalLines = parseInt(execSync('find src -name "*.js" | xargs wc -l | tail -1').toString().trim());
     console.log(`Files:  ${files.length}`);
     console.log(`Lines:  ${totalLines}`);
 
-    // Test count
     const testOutput = execSync('node --env-file=.env test.js 2>&1').toString();
     const testMatch = testOutput.match(/(\d+) passed.*?(\d+) failed.*?\((\d+)ms\)/);
     if (testMatch) console.log(`Tests:  ${testMatch[1]} passed, ${testMatch[2]} failed (${testMatch[3]}ms)`);
 
-    // Render speed
     const P = await import('./src/core/player.js');
     const { renderCard } = await import('./src/rendering/views/card.js');
     getDb();
     P.getOrCreatePlayer('bench', 'Bench');
-    renderCard(P.getPlayer('bench')); // warm
+    renderCard(P.getPlayer('bench'));
     const t0 = performance.now();
     for (let i = 0; i < 50; i++) renderCard(P.getPlayer('bench'));
     const ms = ((performance.now() - t0) / 50).toFixed(1);
     console.log(`Render: ${ms}ms/frame (card, 50 iterations)`);
 
-    // DB size
     try { const dbSize = statSync('data/halcyon.db').size; console.log(`DB:     ${(dbSize / 1024).toFixed(1)}KB`); } catch { console.log('DB:     no database'); }
     getDb().close();
-
-  } else if (cmd === 'preview') {
-    await import('./preview.js');
   }
 
 } else if (cmd === 'test') {

@@ -24,7 +24,7 @@ function executeAction(playerId, action, args = {}) {
     },
     equip: () => { const r = Player.equipItem(playerId, args.itemRowId); return r.success ? { success: true, message: `Equipped ${r.item.icon} ${r.item.name}` } : r; },
     pick_skill: () => { const r = Player.pickSkill(playerId, args.skillId); return r.success ? { success: true, message: `${r.skill.icon} ${r.skill.name}${r.newLevel > 1 ? ` Lv.${r.newLevel}` : ''}` } : r; },
-    set_avatar: () => { const r = Player.setAvatar(playerId, args.avatarId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}` } : r; },
+    set_ancestor: () => { const r = Player.setAncestor(playerId, args.ancestorId); return r.success ? { success: true, message: `🙏 Now worshipping: ${r.ancestor.name}` } : r; },
   };
   const handler = actions[action];
   if (!handler) return { success: false, message: 'Unknown action' };
@@ -63,7 +63,7 @@ export async function handleSelectMenu(interaction) {
   const map = {
     equip: ['equip', { itemRowId: +val }],
     pick_skill: ['pick_skill', { skillId: val }],
-    avatar_select: ['set_avatar', { avatarId: val }],
+    ancestor_select: ['set_ancestor', { ancestorId: val }],
   };
   const [action, args] = map[menuId] || ['unknown', {}];
   const result = executeAction(playerId, action, args);
@@ -92,7 +92,7 @@ function buildUI(playerId) {
 
   // Ancestor selection
   if (player) {
-    rows.push(selectMenu('avatar_select', '🙏 Choose ancestor...',
+    rows.push(selectMenu('ancestor_select', '🙏 Choose ancestor...',
       Object.entries(ANCESTORS).map(([id, a]) => ({
         label: `${a.icon} ${a.name}`, description: player.ancestor === id ? `✓ Worshipping (${player.ancestor_favor} favor)` : a.desc.slice(0, 50), value: id }))));
   }

@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, AVATARS, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -276,7 +276,7 @@ function simulate(attacker, defender, attackerLevels, defenderLevels) {
   };
 }
 
-function executeCombat(playerId, foe, combatType, lootFn) {
+function executeCombat(playerId, foe, lootFn) {
   const player = getPlayer(playerId);
   if (player.stamina < foe.cost) return { success: false, error: 'Not enough stamina' };
   const stats = getEffectiveStats(playerId);
@@ -297,15 +297,13 @@ function executeCombat(playerId, foe, combatType, lootFn) {
       total_gold_earned: player.total_gold_earned + earnedGold,
       total_xp_earned: player.total_xp_earned + earnedXp,
     };
-    if (combatType === 'raid') { if (won) { updates.raids_completed = player.raids_completed + 1; updates.bosses_killed = player.bosses_killed + 1; } }
-    else { updates[won ? 'wins' : 'losses'] = player[won ? 'wins' : 'losses'] + 1; }
-    // Ancestor favor: +1 pve, +5 raid (only on win)
-    if (won) updates.ancestor_favor = player.ancestor_favor + (combatType === 'raid' ? 5 : 1);
+    updates[won ? 'wins' : 'losses'] = player[won ? 'wins' : 'losses'] + 1;
+    if (won) updates.ancestor_favor = player.ancestor_favor + 1;
     upd(playerId, updates);
     if (lootDrop) sql('INSERT INTO equipment(player_id,item_id) VALUES(?,?)').run(playerId, lootDrop);
     const xpResult = addXp(playerId, earnedXp);
-    sql('INSERT INTO combat_log(player_id,opponent_type,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?,?)')
-      .run(playerId, combatType, foe.name, won ? 1 : 0, result.damageDealt, result.damageTaken, earnedGold, earnedXp, lootDrop);
+    sql('INSERT INTO combat_log(player_id,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?)')
+      .run(playerId, foe.name, won ? 1 : 0, result.damageDealt, result.damageTaken, earnedGold, earnedXp, lootDrop);
     const autoEquipped = lootDrop ? autoEquipIfBetter(playerId, lootDrop) : null;
     return { success: true, won, combat: result, gold: earnedGold, xp: xpResult.xp, lootItem: lootDrop ? EQUIPMENT[lootDrop] : null, autoEquipped, leveled: xpResult.leveled, newLevel: xpResult.newLevel, foe };
   });
@@ -320,7 +318,7 @@ export function fightEnemy(playerId, enemyId) {
     name: config.name, cost: ZONES[config.zone]?.staminaCost || 1,
     stats: { hp: config.baseHp * scaleFactor | 0, max_hp: config.baseHp * scaleFactor | 0, attack: config.baseAtk * scaleFactor | 0, defense: config.baseDef * scaleFactor | 0, speed: config.baseSpd * scaleFactor | 0, strength: 0 },
     xpRange: config.xp, goldRange: config.gold,
-  }, 'pve', rollLoot);
+  }, rollLoot);
 }
 
 // ── Loot ──
@@ -342,13 +340,13 @@ export function updateNetworth(playerId) {
   const player = getPlayer(playerId);
   let equipValue = 0;
   for (const row of getAllEquipment(playerId)) equipValue += EQUIPMENT[row.item_id]?.sellValue || 0;
-  const networth = floorZero(player.gold + player.banked_gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level);
+  const networth = floorZero(player.gold + equipValue * ECO.networth.equip + player.level * ECO.networth.level);
   upd(playerId, { networth, peak_networth: Math.max(networth, player.peak_networth) });
   return networth;
 }
 
 export const getRecentLog = (playerId, limit = 5) => sql('SELECT * FROM combat_log WHERE player_id=? ORDER BY timestamp DESC LIMIT ?').all(playerId, limit);
-export const getLeaderboard = (limit = 10) => sql('SELECT id,username,networth,level,pvp_wins FROM players ORDER BY networth DESC LIMIT ?').all(limit);
+export const getLeaderboard = (limit = 10) => sql('SELECT id,username,networth,level FROM players ORDER BY networth DESC LIMIT ?').all(limit);
 export function getRank(playerId) {
   const row = sql('SELECT COUNT(*) + 1 AS rank FROM players WHERE networth > (SELECT networth FROM players WHERE id=?)').get(playerId);
   return row?.rank || 99;
@@ -424,11 +422,6 @@ export function setAncestor(playerId, ancestorId) {
   if (!ANCESTORS[ancestorId]) return { success: false, error: 'Unknown ancestor' };
   upd(playerId, { ancestor: ancestorId, ancestor_favor: 0 }); // switching resets favor
   return { success: true, ancestor: ANCESTORS[ancestorId] };
-}
-
-// Legacy compat — avatar field now points to ancestor
-export function setAvatar(playerId, avatarId) {
-  return setAncestor(playerId, avatarId);
 }
 
 // ── GRIND — core loop: fight, sell junk ──

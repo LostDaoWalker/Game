@@ -207,10 +207,6 @@ export const ANCESTORS = Object.freeze({
   },
 });
 
-// Backwards compat: AVATARS maps to ANCESTORS for card rendering
-export const AVATARS = Object.fromEntries(
-  Object.entries(ANCESTORS).map(([id, a]) => [id, { name: a.name, bg: a.bg, accent: a.accent, pattern: a.pattern }])
-);
 
 // ── Networth frame tiers — card border color by wealth ──
 export const FRAME_TIERS = Object.freeze([

@@ -1,7 +1,7 @@
 {
-  "name": "halcyon",
+  "name": "tianming",
   "version": "1.0.0",
-  "description": "HALCYON — Discord RPG bot",
+  "description": "TIANMING — Xianxia cultivation Discord bot",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
@@ -9,7 +9,6 @@
     "dev": "node --env-file=.env --watch src/index.js",
     "deploy": "node --env-file=.env src/deploy-commands.js",
     "test": "node --env-file=.env test.js",
-    "preview": "node --env-file=.env preview.js",
     "sim": "node --env-file=.env cli.js sim",
     "db": "node --env-file=.env cli.js db",
     "reset": "node --env-file=.env cli.js reset",
