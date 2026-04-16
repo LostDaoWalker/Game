@@ -28,7 +28,7 @@ const isAtMaxStep    = p => p.step >= STEP_NAMES.length - 1;
 // Apply a qi grant to a player, auto-advancing steps and granting perfection rewards.
 // Returns the new cultivation state (caller persists).
 function applyQi(player, qiToAdd) {
-  let { realm, stage, step, qi, prowess_bonus_pct, tribulation_charge } = player;
+  let { realm, stage, step, qi, prowess_bonus_pct } = player;
   qi += qiToAdd;
   let stepsAdvanced = 0, perfectionsReached = 0;
 
@@ -38,13 +38,12 @@ function applyQi(player, qiToAdd) {
     stepsAdvanced++;
     if (PERFECTION_STEPS.has(step)) {
       prowess_bonus_pct += CULTIVATION.prowessPerPerfection;
-      tribulation_charge++;
       perfectionsReached++;
     }
   }
 
   // Qi is never capped — past Absolute Perfection it keeps accumulating.
-  return { realm, stage, step, qi, prowess_bonus_pct, tribulation_charge, stepsAdvanced, perfectionsReached };
+  return { realm, stage, step, qi, prowess_bonus_pct, stepsAdvanced, perfectionsReached };
 }
 
 // ── Tick: catch up passive xp from walltime ──
@@ -63,10 +62,10 @@ export function tickCultivation(playerId) {
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
         cultivation_tick_at=?,
-        prowess_bonus_pct=?, tribulation_charge=?,
+        prowess_bonus_pct=?,
         last_active=unixepoch()
        WHERE id=?`)
-    .run(a.realm, a.stage, a.step, a.qi, now, a.prowess_bonus_pct, a.tribulation_charge, playerId);
+    .run(a.realm, a.stage, a.step, a.qi, now, a.prowess_bonus_pct, playerId);
   return { qiGained, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached };
 }
 
@@ -83,17 +82,16 @@ export function cultivate(playerId) {
   const a = applyQi(player, grant);
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
-        prowess_bonus_pct=?, tribulation_charge=?,
+        prowess_bonus_pct=?,
         last_active=unixepoch()
        WHERE id=?`)
-    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
+    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, playerId);
   return { success: true, qiGained: grant, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached };
 }
 
 // ── Breakthrough ──
 // Unlocks at BREAKTHROUGH_STEP (Peak). Advances stage, or realm if at top of realm.
 // Qi carries over into the new stage/realm; applyQi re-runs step-advancement.
-// On realm breakthrough, tribulation_charge is consumed.
 export function breakthrough(playerId) {
   const p = getPlayer(playerId);
   if (!p) return { success: false, error: 'No player' };
@@ -104,34 +102,18 @@ export function breakthrough(playerId) {
   if (isAtTopOfRealm(p)) {
     if (isAtFinalRealm(p)) return { success: false, error: 'You stand at the summit. No higher realm is known.' };
     const nextRealm = REALMS[p.realm + 1];
-    // Realm breakthrough: advance realm, reset stage/step, qi carries over, charge consumed
-    const newState = {
-      realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
-      prowess_bonus_pct: p.prowess_bonus_pct, tribulation_charge: 0,
-    };
+    const newState = { realm: p.realm + 1, stage: 0, step: 0, qi: p.qi, prowess_bonus_pct: p.prowess_bonus_pct };
     const a = applyQi(newState, 0);
-    sql(`UPDATE players SET
-          realm=?, stage=?, step=?, qi=?,
-          prowess_bonus_pct=?, tribulation_charge=?,
-          last_active=unixepoch()
-         WHERE id=?`)
-      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
+    sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, last_active=unixepoch() WHERE id=?`)
+      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, playerId);
     return { success: true, kind: 'realm', previous: realm.name, next: nextRealm.name };
   }
 
-  // Stage breakthrough: advance stage, reset step, qi carries over
   const nextStage = realm.stages[p.stage + 1];
-  const newState = {
-    realm: p.realm, stage: p.stage + 1, step: 0, qi: p.qi,
-    prowess_bonus_pct: p.prowess_bonus_pct, tribulation_charge: p.tribulation_charge,
-  };
+  const newState = { realm: p.realm, stage: p.stage + 1, step: 0, qi: p.qi, prowess_bonus_pct: p.prowess_bonus_pct };
   const a = applyQi(newState, 0);
-  sql(`UPDATE players SET
-        stage=?, step=?, qi=?,
-        prowess_bonus_pct=?, tribulation_charge=?,
-        last_active=unixepoch()
-       WHERE id=?`)
-    .run(a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
+  sql(`UPDATE players SET stage=?, step=?, qi=?, prowess_bonus_pct=?, last_active=unixepoch() WHERE id=?`)
+    .run(a.stage, a.step, a.qi, a.prowess_bonus_pct, playerId);
   return { success: true, kind: 'stage', previous: realm.stages[p.stage].name, next: nextStage.name };
 }
 
@@ -155,7 +137,6 @@ export function getCultivationView(player) {
     canBreakthrough, isFinalCap,
     canCultivate: true,
     prowessBonusPct: player.prowess_bonus_pct || 0,
-    tribulationCharge: player.tribulation_charge,
   };
 }
 

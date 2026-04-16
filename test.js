@@ -21,7 +21,6 @@ ok('starts stage 0',        player.stage === 0);
 ok('starts Entry (step 0)', player.step === 0);
 ok('starts 0 qi',                player.qi === 0);
 ok('starts 0 prowess bonus',     player.prowess_bonus_pct === 0);
-ok('starts 0 charge',            player.tribulation_charge === 0);
 
 // ── Tick: no time elapsed ──
 sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run((Date.now() / 1000) | 0, 'test');
@@ -63,12 +62,11 @@ const br3 = P.breakthrough('test');
 ok('realm breakthrough success',           br3.success && br3.kind === 'realm');
 ok('advanced to Martial Artist (realm 1)', P.getPlayer('test').realm === 1);
 ok('reset to stage 0',                      P.getPlayer('test').stage === 0);
-ok('charge consumed on realm breakthrough', P.getPlayer('test').tribulation_charge === 0);
 
 // ── Carry-over: heavy qi on breakthrough jumps many steps in the new stage/realm ──
 // Place player at Peak of Mortal stage 0 with a huge qi reserve, break through,
 // and verify they auto-advance through multiple steps in stage 1.
-sql(`UPDATE players SET realm=0, stage=0, step=4, qi=300, prowess_bonus_pct=0, tribulation_charge=0 WHERE id=?`)
+sql(`UPDATE players SET realm=0, stage=0, step=4, qi=300, prowess_bonus_pct=0 WHERE id=?`)
   .run('test');
 const brCarry = P.breakthrough('test');
 ok('stage breakthrough with carry-over succeeds', brCarry.success);
@@ -80,23 +78,21 @@ ok('perfection reached via carry-over grants prowess', pCarry.prowess_bonus_pct 
 // ── Perfection rewards ──
 // Place player at Lesser Perfection (step 5) with 0 qi, then give enough time to reach Greater.
 // Mortal step 5 cost = 5 × 9 = 45 qi → 45 min
-sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, prowess_bonus_pct=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 50 * 60, 'test');
 P.tickCultivation('test');
 const p5 = P.getPlayer('test');
 ok('advanced to Greater Perfection (step 6)',    p5.step === 6);
 ok('prowess +5% on reaching Greater',            p5.prowess_bonus_pct === 5);
-ok('charge +1 on reaching Greater',              p5.tribulation_charge === 1);
 
 // ── Qi flows past Extreme Perfection (step 7) into Absolute Perfection (step 8) ──
 // Place at step 7 with 0 qi. Long tick should push through step 7 (cost 180) into step 8.
-sql('UPDATE players SET realm=0, stage=0, step=7, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+sql('UPDATE players SET realm=0, stage=0, step=7, qi=0, prowess_bonus_pct=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 4 * 3600, 'test'); // 240 xp, enough to clear step 7
 P.tickCultivation('test');
 const pPastExtreme = P.getPlayer('test');
 ok('qi advances past Extreme Perfection into Absolute', pPastExtreme.step === 8);
 ok('Absolute grants +5% prowess',                       pPastExtreme.prowess_bonus_pct === 5);
-ok('Absolute grants +1 charge',                         pPastExtreme.tribulation_charge === 1);
 
 // ── Qi keeps accumulating past Absolute Perfection (no cap) ──
 sql('UPDATE players SET realm=0, stage=0, step=8, qi=0, cultivation_tick_at=? WHERE id=?')
@@ -116,18 +112,17 @@ ok('isFinalCap at summit (qi agnostic)', vFinal.isFinalCap);
 
 // ── Prowess bonus is independent of cultivation rate ──
 // Rate stays at base regardless of prowess_bonus_pct.
-sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=100, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+sql('UPDATE players SET realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=100, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 60, 'test');
 const tRate = P.tickCultivation('test');
 ok('prowess bonus does NOT affect cultivation rate (1 min → 1 qi)', tRate.qiGained === 1);
 
 // Full perfection of a stage = +20% prowess (4 perfection steps × 5%: Lesser, Greater, Extreme, Absolute)
-sql('UPDATE players SET realm=0, stage=0, step=4, qi=0, prowess_bonus_pct=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+sql('UPDATE players SET realm=0, stage=0, step=4, qi=0, prowess_bonus_pct=0, cultivation_tick_at=? WHERE id=?')
   .run(((Date.now() / 1000) | 0) - 20 * 3600, 'test'); // generous walltime to clear all perfections
 P.tickCultivation('test');
 const pFull = P.getPlayer('test');
 ok('full perfection of a stage = +20% prowess', pFull.prowess_bonus_pct === 20);
-ok('full perfection of a stage = +4 charge',    pFull.tribulation_charge === 4);
 
 // View exposes prowessBonusPct
 const vProwess = P.getCultivationView(pFull);
@@ -135,7 +130,7 @@ ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 20);
 
 // ── Cultivate button (spammable, no cooldown, random 1-3 xp) ──
 sql(`UPDATE players SET
-      realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0, tribulation_charge=0,
+      realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0,
       cultivation_tick_at=?
      WHERE id=?`).run(((Date.now() / 1000) | 0), 'test');
 
