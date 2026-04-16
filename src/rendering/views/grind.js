@@ -17,33 +17,29 @@ export function renderGrind(player, result) {
   drawCard(ctx, GW / 2, 260, player);
 
   const pad = 24;
-  let cy = 524;
+  let cy = 530;
 
-  // Combat + earnings
-  R.txt(ctx, `${result.wins}W/${result.losses}L`, pad, cy, { s: 13, c: result.losses === 0 ? C.success : C.text });
-  R.txt(ctx, `+${R.fmt(result.goldEarned)}g`, pad + 90, cy, { s: 13, c: C.gold });
-  R.txt(ctx, `+${R.fmt(result.xpEarned)}xp`, pad + 180, cy, { s: 13, c: C.xpBar });
-  cy += 24;
+  // Gold + XP earned (only if we actually fought)
+  if (result.wins || result.losses) {
+    R.txt(ctx, `+${R.fmt(result.goldEarned)}g`, pad, cy, { s: 14, b: true, c: C.gold });
+    R.txt(ctx, `+${R.fmt(result.xpEarned)}xp`, pad + 120, cy, { s: 14, b: true, c: C.xpBar });
+    cy += 26;
+  }
 
-  if (result.leveled) { R.txt(ctx, `LEVEL UP → Lv.${result.newLevel}`, pad, cy, { s: 14, b: true, c: C.accent }); cy += 22; }
+  if (result.leveled) { R.txt(ctx, `Lv.${result.newLevel}`, pad, cy, { s: 14, b: true, c: C.accent }); cy += 22; }
 
   for (const item of result.loot.slice(0, 3)) {
-    const pre = item.rarity === 'legendary' ? '🌟 ' : item.rarity === 'epic' ? '✨ ' : '';
-    R.txt(ctx, `${pre}${item.icon} ${item.name}`, pad, cy, { s: 11, c: R.rarityColor(item.rarity) });
+    R.txt(ctx, `${item.icon} ${item.name}`, pad, cy, { s: 11, c: R.rarityColor(item.rarity) });
     cy += 16;
   }
 
-  // XP + stamina bars at bottom
+  // XP + stamina bars
   const barW = GW - pad * 2;
-  const xpY = GH - 68;
-  R.txt(ctx, 'XP', pad, xpY, { s: 10, c: C.textMuted });
-  R.txt(ctx, `${(result.xpPercent * 100) | 0}% → Lv.${player.level + 1}`, pad + barW, xpY, { s: 10, c: C.xpBar, a: 'right' });
-  R.bar(ctx, pad, xpY + 13, barW, 7, result.xpPercent, C.xpBar);
-
-  const stY = GH - 34;
-  R.txt(ctx, 'STAMINA', pad, stY, { s: 10, c: C.textMuted });
-  R.txt(ctx, `${player.stamina}/${player.max_stamina}`, pad + barW, stY, { s: 10, c: C.staminaBar, a: 'right' });
-  R.bar(ctx, pad, stY + 13, barW, 7, player.stamina / player.max_stamina, C.staminaBar);
+  const xpY = GH - 56;
+  R.bar(ctx, pad, xpY, barW, 6, result.xpPercent, C.xpBar);
+  const stY = GH - 28;
+  R.bar(ctx, pad, stY, barW, 6, player.stamina / player.max_stamina, C.staminaBar);
+  R.txt(ctx, `${player.stamina}/${player.max_stamina}`, pad + barW, stY + 10, { s: 9, c: C.textMuted, a: 'right' });
 
   return R.toBuffer(canvas);
 }

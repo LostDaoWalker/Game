@@ -12,19 +12,18 @@ function renderView(playerId, extra) {
 
 function formatGrindResult(result) {
   if (!result.wins && !result.losses) {
-    const eta = Player.formatDuration(Player.staminaEtaSeconds(result.player));
-    return { success: true, message: `⏸️ Out of stamina — next ⚡ in ${eta}`, extra: result };
+    return { success: true, message: `⏸️ ${Player.formatDuration(Player.staminaEtaSeconds(result.player))}`, extra: result };
   }
-  const parts = [`${result.wins}W/${result.losses}L +${result.goldEarned}g +${result.xpEarned}xp`];
+  const parts = [`+${result.goldEarned}g +${result.xpEarned}xp`];
+  if (result.losses > 0) parts.push(`${result.losses}L`);
   if (result.leveled) parts.push(`Lv.${result.newLevel}`);
   const legendary = result.loot?.find(i => i.rarity === 'legendary');
   const epic = !legendary && result.loot?.find(i => i.rarity === 'epic');
-  if (legendary) parts.push(`LEGENDARY ${legendary.icon} ${legendary.name}`);
-  else if (epic) parts.push(`EPIC ${epic.icon} ${epic.name}`);
-  if (result.favorGained > 0) parts.push(`+${result.favorGained} ${ANCESTORS[result.player.ancestor]?.icon || '🙏'} favor`);
-  for (const boon of result.newBoons || []) parts.push(`✨ ${boon.icon} ${boon.name} unlocked`);
-  if (result.player.pending_skill_picks > 0) parts.push(`${result.player.pending_skill_picks} skill pick${result.player.pending_skill_picks > 1 ? 's' : ''}`);
-  return { success: true, message: parts.join(' | '), extra: result };
+  if (legendary) parts.push(`🌟 ${legendary.name}`);
+  else if (epic) parts.push(`✨ ${epic.name}`);
+  for (const boon of result.newBoons || []) parts.push(`${boon.icon} ${boon.name}`);
+  if (result.player.pending_skill_picks > 0) parts.push('🎯 skill pick');
+  return { success: true, message: parts.join(' · '), extra: result };
 }
 
 function executeAction(playerId, action, args = {}) {
