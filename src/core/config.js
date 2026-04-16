@@ -72,6 +72,25 @@ export const CULTIVATION = Object.freeze({
   cultivateGrantMax: 3,       //   no cooldown, no realm scaling
 });
 
+// ── Tribulations ──
+// Triggered at realm breakthroughs only (not stage). Splendid and terribly
+// difficult. No progress loss on failure — just try again.
+export const TRIBULATION = Object.freeze({
+  baseSuccess:    0.40,   // 40% base on a naked attempt
+  perChargeBonus: 0.04,   // +4% per tribulation_charge (from perfection steps)
+  maxSuccess:     0.95,   // hard cap so there's always some stake
+  heartDemons: Object.freeze([
+    'A phantom of your former self whispers doubts.',
+    'Your regrets take form and swarm your mind.',
+    'The image of a lost friend stands before you.',
+    'A vision of the enemy you could not defeat haunts you.',
+    'The cost of your path made flesh pleads with you.',
+    'Memories of weakness rise up to drag you back.',
+    'The names of those who doubted you echo in your ears.',
+    'Your shadow sharpens into a blade.',
+  ]),
+});
+
 // ── PvP ──
 // Total combat power = basePower × prowessMultiplier + teamPower.
 // Expected curve: Mortal ~100, Martial Artist ~300, Cultivator ~700 at stage 0 step 0.

@@ -4,6 +4,11 @@ import { TALENT_RARITY_COLORS, ROLLS, REALMS } from '../core/config.js';
 
 const RARITY_COLORS = TALENT_RARITY_COLORS; // same mapping for daoists
 
+function breakthroughLabel(v) {
+  if (v.isRealmBreakthrough && v.tribulationChance != null) return `⚡ Tribulation (${Math.round(v.tribulationChance * 100)}%)`;
+  return '⚡ Breakthrough';
+}
+
 function bar(pct, width = 12) {
   const filled = Math.round(Math.max(0, Math.min(1, pct)) * width);
   return '█'.repeat(filled) + '░'.repeat(width - filled);
@@ -26,7 +31,7 @@ function homeUI(player) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('cultivate').setLabel('🔥 Cultivate').setStyle(ButtonStyle.Success).setDisabled(!v.canCultivate),
-      new ButtonBuilder().setCustomId('breakthrough').setLabel('⚡ Breakthrough').setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
+      new ButtonBuilder().setCustomId('breakthrough').setLabel(breakthroughLabel(v)).setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
       new ButtonBuilder().setCustomId('pvp').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
     ),
     new ActionRowBuilder().addComponents(
@@ -275,15 +280,30 @@ export async function handleButton(interaction) {
   } else if (action === 'breakthrough') {
     const r = P.breakthrough(id);
     P.tickCultivation(id);
-    if (r.success) {
-      const coinsLine = r.kind === 'realm'
-        ? `\n💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`
-        : (r.stonesEarned ? `\n💎 +${r.stonesEarned}` : '');
-      banner = r.kind === 'realm'
-        ? `✨ **Breakthrough to ${r.next}**${coinsLine}` + (r.talent ? `\n🌟 New talent: **${r.talent.name}** *(${r.talent.rarity})*` : '')
-        : `${r.previous} → **${r.next}**${coinsLine}`;
-    } else {
+    if (!r.success) {
       banner = `⚠️ ${r.error}`;
+    } else if (r.kind === 'realm_fail') {
+      banner = [
+        `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `_${r.heartDemon}_`,
+        `You are thrown back, unchanged. Build more strength, then try again.`,
+      ].join('\n');
+    } else if (r.kind === 'realm') {
+      const coinsLine = `💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`;
+      const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity})*` : null;
+      banner = [
+        `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `_${r.heartDemon}_`,
+        `You prevail.`,
+        ``,
+        `✨ **Breakthrough to ${r.next}**`,
+        coinsLine,
+        talentLine,
+      ].filter(Boolean).join('\n');
+    } else {
+      // stage breakthrough
+      const coins = r.stonesEarned ? `\n💎 +${r.stonesEarned}` : '';
+      banner = `${r.previous} → **${r.next}**${coins}`;
     }
   } else {
     P.tickCultivation(id);

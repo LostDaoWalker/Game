@@ -5,7 +5,7 @@ let db;
 const stmtCache = new Map();
 
 // Columns from earlier iterations that should be dropped if present
-const DEAD_COLUMNS = ['essence', 'meditate_available_at', 'tribulation_charge'];
+const DEAD_COLUMNS = ['essence', 'meditate_available_at'];
 
 export function getDb() {
   if (db) return db;
@@ -24,6 +24,7 @@ export function getDb() {
       qi INTEGER NOT NULL DEFAULT 0 CHECK(qi >= 0),
       cultivation_tick_at INTEGER NOT NULL DEFAULT (unixepoch()),
       prowess_bonus_pct INTEGER NOT NULL DEFAULT 0 CHECK(prowess_bonus_pct >= 0),
+      tribulation_charge INTEGER NOT NULL DEFAULT 0 CHECK(tribulation_charge >= 0),
       spirit_stones INTEGER NOT NULL DEFAULT 0 CHECK(spirit_stones >= 0),
       jade INTEGER NOT NULL DEFAULT 0 CHECK(jade >= 0),
       prowess_rating INTEGER NOT NULL DEFAULT 1000,
@@ -56,6 +57,7 @@ export function getDb() {
   add('qi',                  "INTEGER NOT NULL DEFAULT 0");
   add('cultivation_tick_at', "INTEGER NOT NULL DEFAULT (unixepoch())");
   add('prowess_bonus_pct',   "INTEGER NOT NULL DEFAULT 0");
+  add('tribulation_charge',  "INTEGER NOT NULL DEFAULT 0");
   add('spirit_stones',       "INTEGER NOT NULL DEFAULT 0");
   add('jade',                "INTEGER NOT NULL DEFAULT 0");
   add('prowess_rating',      "INTEGER NOT NULL DEFAULT 1000");

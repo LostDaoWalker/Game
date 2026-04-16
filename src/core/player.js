@@ -1,5 +1,5 @@
 import { sql, tx } from './database.js';
-import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS, POWER, PVP } from './config.js';
+import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS, POWER, PVP, TRIBULATION } from './config.js';
 
 // ── Player CRUD ──
 
@@ -216,8 +216,9 @@ const isAtMaxStep    = p => p.step >= STEP_NAMES.length - 1;
 // Apply a qi grant to a player, auto-advancing steps and granting perfection rewards.
 // Returns the new cultivation state (caller persists).
 function applyQi(player, qiToAdd) {
-  let { realm, stage, step, qi, prowess_bonus_pct, spirit_stones } = player;
+  let { realm, stage, step, qi, prowess_bonus_pct, spirit_stones, tribulation_charge } = player;
   spirit_stones = spirit_stones || 0;
+  tribulation_charge = tribulation_charge || 0;
   qi += qiToAdd;
   let stepsAdvanced = 0, perfectionsReached = 0, stonesEarned = 0;
 
@@ -229,12 +230,21 @@ function applyQi(player, qiToAdd) {
       prowess_bonus_pct += CULTIVATION.prowessPerPerfection;
       spirit_stones += CURRENCIES.perfectionStones;
       stonesEarned += CURRENCIES.perfectionStones;
+      tribulation_charge += 1;
       perfectionsReached++;
     }
   }
 
-  // Qi is never capped — past Absolute Perfection it keeps accumulating.
-  return { realm, stage, step, qi, prowess_bonus_pct, spirit_stones, stepsAdvanced, perfectionsReached, stonesEarned };
+  return { realm, stage, step, qi, prowess_bonus_pct, spirit_stones, tribulation_charge, stepsAdvanced, perfectionsReached, stonesEarned };
+}
+
+export function tribulationChance(player) {
+  const base = TRIBULATION.baseSuccess + (player.tribulation_charge || 0) * TRIBULATION.perChargeBonus;
+  return Math.min(TRIBULATION.maxSuccess, base);
+}
+
+function pickHeartDemon() {
+  return TRIBULATION.heartDemons[Math.floor(Math.random() * TRIBULATION.heartDemons.length)];
 }
 
 // ── Tick: catch up passive xp from walltime ──
@@ -254,10 +264,10 @@ export function tickCultivation(playerId) {
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
         cultivation_tick_at=?,
-        prowess_bonus_pct=?, spirit_stones=?,
+        prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?,
         last_active=unixepoch()
        WHERE id=?`)
-    .run(a.realm, a.stage, a.step, a.qi, now, a.prowess_bonus_pct, a.spirit_stones, playerId);
+    .run(a.realm, a.stage, a.step, a.qi, now, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, playerId);
   return { qiGained, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached, stonesEarned: a.stonesEarned };
 }
 
@@ -275,10 +285,10 @@ export function cultivate(playerId) {
   const a = applyQi(player, grant);
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
-        prowess_bonus_pct=?, spirit_stones=?,
+        prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?,
         last_active=unixepoch()
        WHERE id=?`)
-    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, playerId);
+    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, playerId);
   return { success: true, qiGained: grant, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached, stonesEarned: a.stonesEarned };
 }
 
@@ -294,33 +304,53 @@ export function breakthrough(playerId) {
 
   if (isAtTopOfRealm(p)) {
     if (isAtFinalRealm(p)) return { success: false, error: 'You stand at the summit. No higher realm is known.' };
+
+    // Tribulation — splendid and terribly difficult.
+    const chance = tribulationChance(p);
+    const survived = Math.random() < chance;
+    const heartDemon = pickHeartDemon();
+
+    if (!survived) {
+      // No progress loss, no punishment. Charge preserved for the next attempt.
+      return {
+        success: true, kind: 'realm_fail',
+        chance, heartDemon,
+        realmName: realm.name,
+      };
+    }
+
+    // Tribulation survived — consume charge, advance realm, grant rewards.
     const nextRealm = REALMS[p.realm + 1];
     const newState = {
       realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
       prowess_bonus_pct: p.prowess_bonus_pct,
       spirit_stones: p.spirit_stones + CURRENCIES.realmBreakthroughStones,
+      tribulation_charge: 0, // consumed on successful realm breakthrough
     };
     const a = applyQi(newState, 0);
     const newJade = p.jade + CURRENCIES.realmBreakthroughJade;
-    sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, jade=?, last_active=unixepoch() WHERE id=?`)
-      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, newJade, playerId);
+    sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?, jade=?, last_active=unixepoch() WHERE id=?`)
+      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, newJade, playerId);
     const talent = grantTalent(playerId);
     return {
       success: true, kind: 'realm', previous: realm.name, next: nextRealm.name, talent,
       stonesEarned: CURRENCIES.realmBreakthroughStones + a.stonesEarned,
       jadeEarned: CURRENCIES.realmBreakthroughJade,
+      chance, heartDemon,
     };
   }
 
+  // Stage breakthrough — no tribulation
   const nextStage = realm.stages[p.stage + 1];
   const newState = {
     realm: p.realm, stage: p.stage + 1, step: 0, qi: p.qi,
     prowess_bonus_pct: p.prowess_bonus_pct,
     spirit_stones: p.spirit_stones + CURRENCIES.stageBreakthroughStones,
+    tribulation_charge: p.tribulation_charge,
   };
   const a = applyQi(newState, 0);
-  sql(`UPDATE players SET stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, last_active=unixepoch() WHERE id=?`)
-    .run(a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, playerId);
+  sql(`UPDATE players SET stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?, last_active=unixepoch() WHERE id=?`)
+    .run(a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, playerId);
   return {
     success: true, kind: 'stage', previous: realm.stages[p.stage].name, next: nextStage.name,
     stonesEarned: CURRENCIES.stageBreakthroughStones + a.stonesEarned,
@@ -340,13 +370,18 @@ export function getCultivationView(player) {
   // qi still accumulates, but breakthrough has nowhere to go.
   const isFinalCap = atMax && isAtTopOfRealm(player) && isAtFinalRealm(player);
 
+  const isRealmBreakthrough = canBreakthrough && isAtTopOfRealm(player) && !isAtFinalRealm(player);
+  const tribChance = isRealmBreakthrough ? tribulationChance(player) : null;
+
   return {
     realm, stage, stepName,
     stepIndex: player.step,
     qi: player.qi, qiCost: cost, progress,
     canBreakthrough, isFinalCap,
+    isRealmBreakthrough, tribulationChance: tribChance,
     canCultivate: true,
     prowessBonusPct: player.prowess_bonus_pct || 0,
+    tribulationCharge: player.tribulation_charge || 0,
   };
 }
 

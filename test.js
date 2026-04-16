@@ -59,6 +59,7 @@ ok('breakthrough blocked before Peak', !br2.success);
 sql('UPDATE players SET cultivation_tick_at=? WHERE id=?').run(((Date.now() / 1000) | 0) - 3600, 'test');
 P.tickCultivation('test');
 ok('stage 1 reached Peak', P.getPlayer('test').step >= BREAKTHROUGH_STEP);
+sql('UPDATE players SET tribulation_charge=100 WHERE id=?').run('test'); // force tribulation success
 const br3 = P.breakthrough('test');
 ok('realm breakthrough success',           br3.success && br3.kind === 'realm');
 ok('advanced to Martial Artist (realm 1)', P.getPlayer('test').realm === 1);
@@ -175,6 +176,7 @@ ok('formatDuration 90000s',  P.formatDuration(90000) === '1d 1h');
 
 // Starter talent is granted on creation
 P.getOrCreatePlayer('t2', 'Talenter');
+sql('UPDATE players SET tribulation_charge=100 WHERE id=?').run('t2'); // force tribulation success in later test
 const starterTalents = P.getTalents('t2');
 ok('starter talent granted on creation', starterTalents.length === 1);
 ok('starter talent has a known id',      !!TALENTS[starterTalents[0].id]);
@@ -255,7 +257,7 @@ ok('stage breakthrough returns stonesEarned',      typeof brS.stonesEarned === '
 ok('stage breakthrough grants at least +100 stones', P.getPlayer('cur').spirit_stones >= 100);
 
 // Realm breakthrough grants +500 stones + 2 jade
-sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0 WHERE id=?').run('cur');
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, prowess_bonus_pct=0, spirit_stones=0, jade=0, tribulation_charge=100 WHERE id=?').run('cur');
 const brR = P.breakthrough('cur');
 ok('realm breakthrough kind=realm', brR.success && brR.kind === 'realm');
 ok('realm breakthrough grants 500+ stones', P.getPlayer('cur').spirit_stones >= 500);
@@ -385,6 +387,58 @@ ok('rankings sorted by rating desc',   rankings.every((p, i) => i === 0 || ranki
 
 // Rank is number
 ok('getMyRank returns number', typeof P.getMyRank('fighter') === 'number');
+
+// ── Tribulations + Heart Demons ──
+P.getOrCreatePlayer('trib', 'Tribulator');
+sql('DELETE FROM talents WHERE player_id=?').run('trib');
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
+
+// View should flag this as a realm breakthrough
+const vTrib = P.getCultivationView(P.getPlayer('trib'));
+ok('view: isRealmBreakthrough at top-of-realm Peak', vTrib.isRealmBreakthrough);
+ok('view: tribulationChance is a number 0-1',
+   typeof vTrib.tribulationChance === 'number' && vTrib.tribulationChance > 0 && vTrib.tribulationChance < 1);
+
+// Tribulation can fail (no progress loss) — keep retrying
+let outcomes = [];
+for (let i = 0; i < 30 && P.getPlayer('trib').realm === 0; i++) {
+  const r = P.breakthrough('trib');
+  outcomes.push(r.kind);
+}
+ok('at least one tribulation outcome observed', outcomes.length > 0);
+ok('eventually succeeded on realm breakthrough', P.getPlayer('trib').realm === 1);
+
+// Charge increases success chance
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0 WHERE id=?').run('trib');
+const baseChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
+sql('UPDATE players SET tribulation_charge=10 WHERE id=?').run('trib');
+const boostedChance = P.getCultivationView(P.getPlayer('trib')).tribulationChance;
+ok('tribulation chance grows with charge', boostedChance > baseChance);
+
+// Charge is consumed on successful realm breakthrough
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=50 WHERE id=?').run('trib'); // forces ~100% success
+const trySuccess = P.breakthrough('trib');
+ok('high charge forces success', trySuccess.kind === 'realm');
+ok('charge consumed on realm-up',  P.getPlayer('trib').tribulation_charge === 0);
+
+// Failure preserves charge
+sql('UPDATE players SET realm=0, stage=1, step=4, qi=0, tribulation_charge=0, prowess_bonus_pct=0 WHERE id=?').run('trib');
+// baseSuccess 40% — sometimes fails. Look for a failure in many tries.
+let sawFail = false;
+for (let i = 0; i < 20; i++) {
+  sql('UPDATE players SET tribulation_charge=0 WHERE id=?').run('trib');
+  const r = P.breakthrough('trib');
+  if (r.kind === 'realm_fail') { sawFail = true; break; }
+  // if success, reset to test again
+  sql('UPDATE players SET realm=0, stage=1, step=4, qi=0 WHERE id=?').run('trib');
+}
+ok('tribulation can fail at base chance', sawFail);
+
+// Perfection steps grant tribulation_charge again (re-added)
+sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, tribulation_charge=0, cultivation_tick_at=? WHERE id=?')
+  .run(((Date.now() / 1000) | 0) - 60 * 60, 'trib');
+P.tickCultivation('trib');
+ok('reaching Greater Perfection grants +1 charge', P.getPlayer('trib').tribulation_charge === 1);
 
 db.close();
 rmSync('data', { recursive: true, force: true });
