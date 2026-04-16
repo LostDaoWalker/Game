@@ -70,12 +70,17 @@ export const CULTIVATION = Object.freeze({
 });
 
 // ── Tribulations ──
-// Triggered at realm breakthroughs only (not stage). Splendid and terribly
-// difficult. No progress loss on failure — just try again.
+// Every stage/realm/grand breakthrough rolls a tribulation. Difficulty
+// scales by kind — stage trials are passable, realm crossings are harder,
+// grand crossings (becoming Martial Artist / Cultivator) are splendid and
+// terribly difficult. No progress loss on failure — just try again.
+// tribulation_charge (earned at each perfection step) adds +perChargeBonus
+// to whichever tribulation you face next, then is consumed on success.
 export const TRIBULATION = Object.freeze({
-  baseSuccess:    0.40,   // 40% base on a naked attempt
-  perChargeBonus: 0.04,   // +4% per tribulation_charge (from perfection steps)
-  maxSuccess:     0.95,   // hard cap so there's always some stake
+  stage: Object.freeze({ baseSuccess: 0.80, maxSuccess: 0.98 }),
+  realm: Object.freeze({ baseSuccess: 0.60, maxSuccess: 0.95 }),
+  grand: Object.freeze({ baseSuccess: 0.40, maxSuccess: 0.95 }),
+  perChargeBonus: 0.04,
   heartDemons: Object.freeze([
     'A phantom of your former self whispers doubts.',
     'Your regrets take form and swarm your mind.',

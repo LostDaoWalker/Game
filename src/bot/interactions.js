@@ -4,8 +4,12 @@ import { TALENT_RARITY_COLORS, ROLLS, REALMS, GRAND_REALMS } from '../core/confi
 
 const RARITY_COLORS = TALENT_RARITY_COLORS; // same mapping for daoists
 
+const TRIB_ICON = { stage: '⚡', realm: '🌩️', grand: '💥' };
 function breakthroughLabel(v) {
-  if (v.isGrandBreakthrough && v.tribulationChance != null) return `⚡ Tribulation (${Math.round(v.tribulationChance * 100)}%)`;
+  if (v.tribulationKind && v.tribulationChance != null) {
+    const icon = TRIB_ICON[v.tribulationKind] || '⚡';
+    return `${icon} Tribulation (${Math.round(v.tribulationChance * 100)}%)`;
+  }
   return '⚡ Breakthrough';
 }
 
@@ -308,9 +312,21 @@ export async function handleButton(interaction) {
     P.tickCultivation(id);
     if (!r.success) {
       banner = `⚠️ ${r.error}`;
+    } else if (r.kind === 'stage_fail') {
+      banner = [
+        `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `_${r.heartDemon}_`,
+        `Your dao wavers. You hold your ground — try again.`,
+      ].join('\n');
+    } else if (r.kind === 'realm_fail') {
+      banner = [
+        `🌩️ **Great Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `_${r.heartDemon}_`,
+        `The heavens reject your ascent. You remain, unbroken. Try again.`,
+      ].join('\n');
     } else if (r.kind === 'grand_fail') {
       banner = [
-        `⚡ **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `💥 **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
         `_${r.heartDemon}_`,
         `You are thrown back, unchanged. Build more strength, then try again.`,
       ].join('\n');
@@ -318,7 +334,7 @@ export async function handleButton(interaction) {
       const coinsLine = `💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`;
       const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity} · ${P.talentTierOdds(r.talent.rarity)}%)*` : null;
       banner = [
-        `⚡ **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
+        `💥 **Heavenly Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
         `_${r.heartDemon}_`,
         `You prevail.`,
         ``,
@@ -330,14 +346,15 @@ export async function handleButton(interaction) {
       const coinsLine = `💎 +${r.stonesEarned}${r.jadeEarned ? ` · 🟢 +${r.jadeEarned}` : ''}`;
       const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity} · ${P.talentTierOdds(r.talent.rarity)}%)*` : null;
       banner = [
+        `🌩️ **Great Tribulation survived** *(${Math.round(r.chance * 100)}%)*`,
         `✨ **${r.previous} → ${r.next}**`,
         coinsLine,
         talentLine,
       ].filter(Boolean).join('\n');
     } else {
       // stage breakthrough
-      const coins = r.stonesEarned ? `\n💎 +${r.stonesEarned}` : '';
-      banner = `${r.realmName} · ${r.previous} → **${r.next}**${coins}`;
+      const coins = r.stonesEarned ? ` · 💎 +${r.stonesEarned}` : '';
+      banner = `⚡ Tribulation survived *(${Math.round(r.chance * 100)}%)* — ${r.realmName} · ${r.previous} → **${r.next}**${coins}`;
     }
   } else {
     P.tickCultivation(id);

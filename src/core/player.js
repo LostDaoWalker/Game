@@ -271,9 +271,19 @@ function applyQi(player, qiToAdd) {
   return { realm, stage, step, qi, prowess_bonus_pct, spirit_stones, tribulation_charge, stepsAdvanced, perfectionsReached, stonesEarned };
 }
 
-export function tribulationChance(player) {
-  const base = TRIBULATION.baseSuccess + (player.tribulation_charge || 0) * TRIBULATION.perChargeBonus;
-  return Math.min(TRIBULATION.maxSuccess, base);
+// Breakthrough kind at the player's current position (or null if not ready).
+export function breakthroughKind(player) {
+  if (player.step < BREAKTHROUGH_STEP) return null;
+  if (!isAtTopOfRealm(player)) return 'stage';
+  if (isAtFinalRealm(player)) return null;
+  return isGrandCross(player) ? 'grand' : 'realm';
+}
+
+export function tribulationChance(player, kind) {
+  const cfg = TRIBULATION[kind];
+  if (!cfg) return null;
+  const base = cfg.baseSuccess + (player.tribulation_charge || 0) * TRIBULATION.perChargeBonus;
+  return Math.min(cfg.maxSuccess, base);
 }
 
 function pickHeartDemon() {
@@ -326,58 +336,56 @@ export function cultivate(playerId) {
 }
 
 // ── Breakthrough ──
-// Unlocks at BREAKTHROUGH_STEP (Peak). Advances stage, or realm if at top of realm.
-// Qi carries over into the new stage/realm; applyQi re-runs step-advancement.
+// Unlocks at BREAKTHROUGH_STEP (Peak). Every breakthrough rolls a tribulation
+// scaled to its kind (stage < realm < grand). Success consumes charge.
+// Failure keeps position — no progress loss, just try again.
 export function breakthrough(playerId) {
   const p = getPlayer(playerId);
   if (!p) return { success: false, error: 'No player' };
   if (p.step < BREAKTHROUGH_STEP) return { success: false, error: 'Not ready — reach Peak first.' };
 
   const realm = REALMS[p.realm];
+  const kind = breakthroughKind(p);
+  if (!kind) return { success: false, error: 'You stand at the summit. No higher realm is known.' };
 
-  if (isAtTopOfRealm(p)) {
-    if (isAtFinalRealm(p)) return { success: false, error: 'You stand at the summit. No higher realm is known.' };
+  const chance = tribulationChance(p, kind);
+  const survived = Math.random() < chance;
+  const heartDemon = pickHeartDemon();
 
-    const crossingGrand = isGrandCross(p);
+  if (!survived) {
+    return { success: true, kind: `${kind}_fail`, chance, heartDemon };
+  }
+
+  if (kind === 'grand') {
     const nextRealm = REALMS[p.realm + 1];
+    const nextGrand = GRAND_REALMS[nextRealm.grandId];
+    const newState = {
+      realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
+      prowess_bonus_pct: p.prowess_bonus_pct,
+      spirit_stones: p.spirit_stones + CURRENCIES.grandBreakthroughStones,
+      tribulation_charge: 0,
+    };
+    const a = applyQi(newState, 0);
+    const newJade = p.jade + CURRENCIES.grandBreakthroughJade;
+    sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?, jade=?, last_active=unixepoch() WHERE id=?`)
+      .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, newJade, playerId);
+    const talent = grantTalent(playerId);
+    return {
+      success: true, kind: 'grand',
+      previous: realm.name, next: nextRealm.name, grandRealm: nextGrand,
+      talent, stonesEarned: CURRENCIES.grandBreakthroughStones + a.stonesEarned,
+      jadeEarned: CURRENCIES.grandBreakthroughJade,
+      chance, heartDemon,
+    };
+  }
 
-    if (crossingGrand) {
-      // Tribulation — splendid and terribly difficult.
-      const chance = tribulationChance(p);
-      const survived = Math.random() < chance;
-      const heartDemon = pickHeartDemon();
-
-      if (!survived) {
-        return { success: true, kind: 'grand_fail', chance, heartDemon, grandRealmName: getGrandRealm(p).name };
-      }
-
-      const nextGrand = GRAND_REALMS[nextRealm.grandId];
-      const newState = {
-        realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
-        prowess_bonus_pct: p.prowess_bonus_pct,
-        spirit_stones: p.spirit_stones + CURRENCIES.grandBreakthroughStones,
-        tribulation_charge: 0,
-      };
-      const a = applyQi(newState, 0);
-      const newJade = p.jade + CURRENCIES.grandBreakthroughJade;
-      sql(`UPDATE players SET realm=?, stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?, jade=?, last_active=unixepoch() WHERE id=?`)
-        .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.spirit_stones, a.tribulation_charge, newJade, playerId);
-      const talent = grantTalent(playerId);
-      return {
-        success: true, kind: 'grand',
-        previous: realm.name, next: nextRealm.name, grandRealm: nextGrand,
-        talent, stonesEarned: CURRENCIES.grandBreakthroughStones + a.stonesEarned,
-        jadeEarned: CURRENCIES.grandBreakthroughJade,
-        chance, heartDemon,
-      };
-    }
-
-    // Regular realm breakthrough within the same grand realm — no tribulation
+  if (kind === 'realm') {
+    const nextRealm = REALMS[p.realm + 1];
     const newState = {
       realm: p.realm + 1, stage: 0, step: 0, qi: p.qi,
       prowess_bonus_pct: p.prowess_bonus_pct,
       spirit_stones: p.spirit_stones + CURRENCIES.realmBreakthroughStones,
-      tribulation_charge: p.tribulation_charge,
+      tribulation_charge: 0,
     };
     const a = applyQi(newState, 0);
     const newJade = p.jade + CURRENCIES.realmBreakthroughJade;
@@ -389,16 +397,17 @@ export function breakthrough(playerId) {
       previous: realm.name, next: nextRealm.name,
       talent, stonesEarned: CURRENCIES.realmBreakthroughStones + a.stonesEarned,
       jadeEarned: CURRENCIES.realmBreakthroughJade,
+      chance, heartDemon,
     };
   }
 
-  // Stage breakthrough — no tribulation
+  // kind === 'stage'
   const nextStageName = STAGES[p.stage + 1];
   const newState = {
     realm: p.realm, stage: p.stage + 1, step: 0, qi: p.qi,
     prowess_bonus_pct: p.prowess_bonus_pct,
     spirit_stones: p.spirit_stones + CURRENCIES.stageBreakthroughStones,
-    tribulation_charge: p.tribulation_charge,
+    tribulation_charge: 0,
   };
   const a = applyQi(newState, 0);
   sql(`UPDATE players SET stage=?, step=?, qi=?, prowess_bonus_pct=?, spirit_stones=?, tribulation_charge=?, last_active=unixepoch() WHERE id=?`)
@@ -407,6 +416,7 @@ export function breakthrough(playerId) {
     success: true, kind: 'stage',
     previous: STAGES[p.stage], next: nextStageName, realmName: realm.name,
     stonesEarned: CURRENCIES.stageBreakthroughStones + a.stonesEarned,
+    chance, heartDemon,
   };
 }
 
@@ -422,16 +432,16 @@ export function getCultivationView(player) {
   const canBreakthrough = player.step >= BREAKTHROUGH_STEP;
   const isFinalCap = atMax && isAtTopOfRealm(player) && isAtFinalRealm(player);
 
-  // Tribulation only on grand realm crossings.
-  const isGrandBreakthrough = canBreakthrough && isGrandCross(player);
-  const tribChance = isGrandBreakthrough ? tribulationChance(player) : null;
+  // Every breakthrough is a tribulation — kind scales the difficulty.
+  const tribKind = canBreakthrough ? breakthroughKind(player) : null;
+  const tribChance = tribKind ? tribulationChance(player, tribKind) : null;
 
   return {
     grandRealm, realm, stageName, stepName,
     stepIndex: player.step,
     qi: player.qi, qiCost: cost, progress,
     canBreakthrough, isFinalCap,
-    isGrandBreakthrough, tribulationChance: tribChance,
+    tribulationKind: tribKind, tribulationChance: tribChance,
     canCultivate: true,
     prowessBonusPct: player.prowess_bonus_pct || 0,
     tribulationCharge: player.tribulation_charge || 0,
