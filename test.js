@@ -306,6 +306,48 @@ for (let i = 0; i < 100; i++) {
 }
 ok('stone roll never yields legendary', !sawLegendary);
 
+// ── Team / Slots ──
+P.getOrCreatePlayer('teamer', 'Teamer');
+const teamerBase = P.getPlayer('teamer');
+ok('Mortal gets 0 daoist slots', P.getDaoistSlots(teamerBase) === 0);
+
+// Mortal can't assign a daoist
+sql('UPDATE players SET spirit_stones=10000 WHERE id=?').run('teamer');
+P.rollDaoist('teamer', 'stone');
+const rosterTeam = P.getDaoists('teamer');
+ok('roster grew from roll', rosterTeam.length === 1);
+const mortalAssign = P.assignDaoistToTeam('teamer', rosterTeam[0].rowId);
+ok('Mortal cannot assign daoist to team', !mortalAssign.success);
+
+// Martial Artist gets 2 daoist slots
+sql('UPDATE players SET realm=1 WHERE id=?').run('teamer');
+ok('Martial Artist gets 2 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 2);
+
+const maAssign = P.assignDaoistToTeam('teamer', rosterTeam[0].rowId);
+ok('MA can assign daoist to team', maAssign.success);
+ok('team count reflects assignment', P.getTeamDaoists('teamer').length === 1);
+
+// Fill team slots, next assign fails
+P.rollDaoist('teamer', 'stone');
+P.rollDaoist('teamer', 'stone');
+const allDaoists = P.getDaoists('teamer');
+for (const d of allDaoists) P.assignDaoistToTeam('teamer', d.rowId);
+ok('team fills at slot capacity', P.getTeamDaoists('teamer').length === 2);
+const extra = P.rollDaoist('teamer', 'stone');
+const overflowAssign = P.assignDaoistToTeam('teamer', extra.daoist && P.getDaoists('teamer').find(d => !d.in_team)?.rowId);
+ok('assignment past slot limit blocked', !overflowAssign.success);
+
+// Remove a daoist, then a new assignment succeeds
+const teamDaoists = P.getTeamDaoists('teamer');
+P.removeDaoistFromTeam('teamer', teamDaoists[0].rowId);
+ok('after remove, team is below slot limit', P.getTeamDaoists('teamer').length === 1);
+const benchDaoist = P.getDaoists('teamer').find(d => !d.in_team);
+ok('reassign succeeds with free slot', P.assignDaoistToTeam('teamer', benchDaoist.rowId).success);
+
+// Cultivator has 4 daoist slots
+sql('UPDATE players SET realm=2 WHERE id=?').run('teamer');
+ok('Cultivator gets 4 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 4);
+
 db.close();
 rmSync('data', { recursive: true, force: true });
 

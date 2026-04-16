@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
 import * as P from '../core/player.js';
 import { TALENT_RARITY_COLORS, ROLLS } from '../core/config.js';
 
@@ -27,8 +27,73 @@ function homeUI(player) {
     new ButtonBuilder().setCustomId('cultivate').setLabel('🔥 Cultivate').setStyle(ButtonStyle.Success).setDisabled(!v.canCultivate),
     new ButtonBuilder().setCustomId('breakthrough').setLabel('⚡ Breakthrough').setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
     new ButtonBuilder().setCustomId('view:profile').setLabel('📜 Profile').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('view:team').setLabel('👥 Team').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('view:roll').setLabel('🎲 Roll').setStyle(ButtonStyle.Secondary),
   )];
+}
+
+// ── Team screen ──
+
+function renderTeam(playerId) {
+  const player = P.getPlayer(playerId);
+  const team = P.getTeamDaoists(playerId);
+  const bench = P.getDaoists(playerId).filter(d => !d.in_team);
+  const slots = P.getDaoistSlots(player);
+  const lines = [`👥 **Team** (${team.length}/${slots} daoist slots)`];
+
+  lines.push('', '**On team**');
+  if (!team.length) {
+    lines.push(slots === 0 ? '*(you cultivate alone — breakthrough to form a team)*' : '*(empty)*');
+  } else for (const d of team) {
+    const tag = RARITY_COLORS[d.rarity] || '⚪';
+    lines.push(`${tag} **${d.name}** · ${d.power} pwr`);
+  }
+
+  lines.push('', `**Bench** (${bench.length})`);
+  if (!bench.length) lines.push('*(none — roll for more in 🎲 Roll)*');
+  else {
+    const grouped = bench.reduce((m, d) => { (m[d.id] ||= { ...d, count: 0 }).count++; return m; }, {});
+    for (const d of Object.values(grouped)) {
+      const tag = RARITY_COLORS[d.rarity] || '⚪';
+      lines.push(`${tag} **${d.name}** ×${d.count} · ${d.power} pwr`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function teamUI(playerId) {
+  const player = P.getPlayer(playerId);
+  const team = P.getTeamDaoists(playerId);
+  const bench = P.getDaoists(playerId).filter(d => !d.in_team);
+  const slots = P.getDaoistSlots(player);
+  const rows = [];
+
+  if (bench.length && team.length < slots) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder().setCustomId('team:assign').setPlaceholder('Assign to team…').addOptions(
+        bench.slice(0, 25).map(d => ({
+          label: `${d.name} (${d.rarity})`,
+          description: `${d.power} pwr`,
+          value: String(d.rowId),
+        }))
+      )
+    ));
+  }
+  if (team.length) {
+    rows.push(new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder().setCustomId('team:remove').setPlaceholder('Remove from team…').addOptions(
+        team.slice(0, 25).map(d => ({
+          label: `${d.name} (${d.rarity})`,
+          description: `${d.power} pwr`,
+          value: String(d.rowId),
+        }))
+      )
+    ));
+  }
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('view:home').setLabel('← Back').setStyle(ButtonStyle.Secondary),
+  ));
+  return rows;
 }
 
 // ── Roll screen ──
@@ -136,6 +201,7 @@ export async function handleButton(interaction) {
   if (action === 'view') {
     if (args[0] === 'profile') return interaction.update({ content: renderProfile(id), components: profileUI() });
     if (args[0] === 'roll')    return interaction.update({ content: renderRoll(id), components: rollUI(P.getPlayer(id)) });
+    if (args[0] === 'team')    return interaction.update({ content: renderTeam(id), components: teamUI(id) });
     return showHome(interaction);
   }
 
@@ -175,5 +241,19 @@ export async function handleButton(interaction) {
 }
 
 export async function handleSelectMenu(interaction) {
-  await interaction.update({ content: '(Not implemented)', components: [] });
+  const id = interaction.user.id;
+  if (!P.getPlayer(id)) return interaction.reply({ content: '❌ Use `/tianming`', ephemeral: true });
+
+  const [action, kind] = interaction.customId.split(':');
+
+  if (action === 'team') {
+    const rowId = Number(interaction.values[0]);
+    const r = kind === 'assign' ? P.assignDaoistToTeam(id, rowId) : P.removeDaoistFromTeam(id, rowId);
+    const banner = r.success
+      ? (kind === 'assign' ? `✅ Assigned **${r.daoist.name}**` : `↩️ Removed **${r.daoist.name}**`)
+      : `⚠️ ${r.error}`;
+    return interaction.update({ content: `${banner}\n\n${renderTeam(id)}`, components: teamUI(id) });
+  }
+
+  await interaction.update({ content: '(Unknown menu)', components: [] });
 }

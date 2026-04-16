@@ -29,6 +29,8 @@ export const PERFECTION_STEPS = Object.freeze(new Set([5, 6, 7, 8]));
 // ── Realms ──
 // Each realm has named stages. Breakthrough from the last stage's Peak
 // jumps the player into the next realm (index +1).
+// teamSlots includes the player themselves; daoistSlots = teamSlots - 1.
+// Players start alone (1 slot) and grow the team on realm breakthroughs.
 export const REALMS = Object.freeze([
   {
     id: 0, key: 'mortal', name: 'Mortal', icon: '🌱',
@@ -37,6 +39,7 @@ export const REALMS = Object.freeze([
       Object.freeze({ key: 'inner_awakening', name: 'Inner Awakening' }),
     ]),
     baseStepCost: 5,
+    teamSlots: 1,
   },
   {
     id: 1, key: 'martial_artist', name: 'Martial Artist', icon: '🥋',
@@ -46,6 +49,7 @@ export const REALMS = Object.freeze([
       Object.freeze({ key: 'bone',     name: 'Bone Refining' }),
     ]),
     baseStepCost: 25,
+    teamSlots: 3,
   },
   {
     id: 2, key: 'cultivator', name: 'Cultivator', icon: '✨',
@@ -56,6 +60,7 @@ export const REALMS = Object.freeze([
       Object.freeze({ key: 'core_integration', name: 'Core Integration' }),
     ]),
     baseStepCost: 125,
+    teamSlots: 5,
   },
 ]);
 

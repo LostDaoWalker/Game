@@ -93,6 +93,32 @@ export function getTeamDaoists(playerId) {
   return getDaoists(playerId).filter(d => d.in_team);
 }
 
+// Daoist slots = realm.teamSlots - 1 (the other slot is the player).
+export function getDaoistSlots(player) {
+  return Math.max(0, REALMS[player.realm].teamSlots - 1);
+}
+
+export function assignDaoistToTeam(playerId, rowId) {
+  const player = getPlayer(playerId);
+  if (!player) return { success: false, error: 'No player' };
+  const row = sql('SELECT * FROM daoists WHERE id=? AND player_id=?').get(rowId, playerId);
+  if (!row) return { success: false, error: 'Daoist not found' };
+  if (row.in_team) return { success: false, error: 'Already on team' };
+  const slots = getDaoistSlots(player);
+  const onTeam = getTeamDaoists(playerId).length;
+  if (onTeam >= slots) return { success: false, error: slots === 0 ? 'Mortals cultivate alone — breakthrough to form a team.' : 'Team is full.' };
+  sql('UPDATE daoists SET in_team=1 WHERE id=?').run(rowId);
+  return { success: true, daoist: DAOISTS[row.daoist_id] };
+}
+
+export function removeDaoistFromTeam(playerId, rowId) {
+  const row = sql('SELECT * FROM daoists WHERE id=? AND player_id=?').get(rowId, playerId);
+  if (!row) return { success: false, error: 'Daoist not found' };
+  if (!row.in_team) return { success: false, error: 'Not on team' };
+  sql('UPDATE daoists SET in_team=0 WHERE id=?').run(rowId);
+  return { success: true, daoist: DAOISTS[row.daoist_id] };
+}
+
 // ── Cultivation math ──
 
 export function stepCost(realmIndex, stepIndex) {
