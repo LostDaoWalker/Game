@@ -1,5 +1,5 @@
 import { sql, tx, upd } from './database.js';
-import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, QUEST_VERBS, COMBAT_FLAVORS, getRealm } from './config.js';
+import { LEVEL, ECO, EQUIPMENT, SKILLS, ENEMIES, RARITIES, ZONES, BLOODLINES, PHYSIQUES, TALENTS, ANCESTORS, CLASSES, COMBAT_FLAVORS, getRealm } from './config.js';
 
 const randBetween = (min, max) => (Math.random() * (max - min + 1) | 0) + min;
 
@@ -444,79 +444,22 @@ export function setClass(playerId, classId) {
   return { success: true, class: CLASSES[classId] };
 }
 
-// ── Tavern — generate 3 random quest offers from the player's available pool ──
-
-const pickRandom = arr => arr[(Math.random() * arr.length) | 0];
-
 export function pickFlavor(key) {
   const arr = COMBAT_FLAVORS[key];
-  return arr ? pickRandom(arr) : '';
-}
-
-export function getQuestOffers(playerId) {
-  const player = getPlayer(playerId);
-  const pool = Object.entries(ENEMIES).filter(([, e]) => player.level >= e.minLevel);
-  if (!pool.length) return [];
-  const picks = [], used = new Set();
-  const count = Math.min(3, pool.length);
-  while (picks.length < count) {
-    const idx = (Math.random() * pool.length) | 0;
-    if (used.has(idx)) continue;
-    used.add(idx);
-    const [id, enemy] = pool[idx];
-    picks.push({ enemyId: id, enemy, verb: pickRandom(QUEST_VERBS) });
-  }
-  return picks;
-}
-
-// ── Arena — PvP duel, glory only (no gold theft) ──
-
-export function pvpFight(playerId) {
-  const player = getPlayer(playerId);
-  if (player.stamina < 1) return { success: false, error: 'Not enough stamina' };
-  const opponent = sql('SELECT * FROM players WHERE id!=? AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1')
-    .get(playerId, Math.max(1, player.level - 3), player.level + 3);
-  const opponentLevel = opponent?.level || Math.max(1, player.level + (((Math.random() * 5) | 0) - 2));
-  const opponentName = opponent ? opponent.username : pickRandom(['PhantomDisciple', 'JadeGolem', 'WanderingMonk', 'DemonServant']) + ` (Lv.${opponentLevel})`;
-  const stats = getEffectiveStats(playerId);
-  const foeStats = opponent
-    ? getEffectiveStats(opponent.id)
-    : { hp: 80 + opponentLevel * 12, max_hp: 80 + opponentLevel * 12, attack: 6 + opponentLevel * 2, defense: 3 + opponentLevel, speed: 4 + opponentLevel, strength: 4 + opponentLevel };
-  const foeSkills = opponent ? getSkillLevelMap(opponent.id) : {};
-  const sim = simulate(stats, foeStats, getSkillLevelMap(playerId), foeSkills);
-  const won = sim.winner === 'attacker';
-  const xp = won ? ((10 + player.level * 3) + ((Math.random() * (20 + player.level * 2)) | 0)) : ((5 + player.level * 1) | 0);
-  const gold = won ? ((10 + player.level * 5) + ((Math.random() * (10 + player.level * 5)) | 0)) : 0;
-  return tx(() => {
-    const updates = {
-      stamina: floorZero(player.stamina - 1),
-      hp: player.max_hp,
-      gold: floorZero(player.gold + gold),
-      total_gold_earned: player.total_gold_earned + gold,
-      total_xp_earned: player.total_xp_earned + xp,
-      [won ? 'wins' : 'losses']: player[won ? 'wins' : 'losses'] + 1,
-    };
-    if (won) updates.ancestor_favor = player.ancestor_favor + 2;
-    upd(playerId, updates);
-    const xpResult = addXp(playerId, xp);
-    sql('INSERT INTO combat_log(player_id,opponent_name,won,damage_dealt,damage_taken,gold_earned,xp_earned,loot_item) VALUES(?,?,?,?,?,?,?,?)')
-      .run(playerId, opponentName, won ? 1 : 0, sim.damageDealt, sim.damageTaken, gold, xp, null);
-    return { success: true, won, opponentName, gold, xp: xpResult.xp, leveled: xpResult.leveled, newLevel: xpResult.newLevel };
-  });
+  if (!arr || !arr.length) return '';
+  return arr[(Math.random() * arr.length) | 0];
 }
 
 // ── GRIND — core loop: fight, sell junk ──
 
-export function grind(playerId, chosenEnemyId = null) {
+export function grind(playerId) {
   regenStamina(playerId);
   const before = getPlayer(playerId);
   const beforeRealm = getRealm(before.level);
   const result = { wins: 0, losses: 0, goldEarned: 0, xpEarned: 0, loot: [], leveled: false, newLevel: before.level, junkGold: 0, junkCount: 0, stoppedReason: null, beforeNetworth: before.networth, beforeGold: before.gold, beforeLevel: before.level, newRealm: null };
 
-  const enemyId = chosenEnemyId && ENEMIES[chosenEnemyId] && before.level >= ENEMIES[chosenEnemyId].minLevel ? chosenEnemyId : bestEnemy(playerId);
+  const enemyId = bestEnemy(playerId);
   if (enemyId) {
-    result.enemyId = enemyId;
-    result.enemy = ENEMIES[enemyId];
     const bulk = bulkFight(playerId, enemyId, 5);
     result.wins = bulk.wins; result.losses = bulk.losses;
     result.goldEarned = bulk.goldEarned; result.xpEarned = bulk.xpEarned;

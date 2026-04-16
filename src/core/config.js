@@ -158,20 +158,12 @@ export const TALENTS = Object.freeze({
   dull:     { name: 'Dull Roots',                  icon: '🪨', bonus: {},                      weight: 50 },
 });
 
-// ── Quest flavor (tavern-style adventure verbs) ──
-export const QUEST_VERBS = Object.freeze([
-  'Hunt', 'Face', 'Challenge', 'Cleanse', 'Vanquish',
-  'Track', 'Ambush', 'Confront', 'Purge', 'Duel',
-]);
-
 // ── Combat flavor — comic-book lines for random color ──
 export const COMBAT_FLAVORS = Object.freeze({
   victory: ['Another soul for the Dao.', 'The path calls you forward.', 'Heaven bears witness.', 'Your qi sings.', 'The blade knows its master.'],
   defeat: ['A humbling defeat.', 'The path is long.', 'You rise, bones aching.', 'The Dao teaches through pain.', 'Even mountains fall.'],
   levelUp: ['Your qi surges.', 'A breakthrough!', 'Heaven opens.', 'The Dao deepens.', 'Your meridians widen.'],
   loot: ['The spirits favor you.', 'Fortune smiles.', 'Treasure claimed.', 'The ancestors approve.'],
-  arena_win: ['A sparring victory worth remembering.', 'Your name spreads through the sect.', 'Honor earned.'],
-  arena_loss: ['A bitter lesson.', 'The better cultivator won today.', 'Return to meditation.'],
 });
 
 // ── Classes (Three Paths of Cultivation) — player-chosen ──
