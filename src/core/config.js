@@ -72,6 +72,38 @@ export const CULTIVATION = Object.freeze({
   cultivateGrantMax: 3,       //   no cooldown, no realm scaling
 });
 
+// ── PvP ──
+// Total combat power = basePower × prowessMultiplier + teamPower.
+// Expected curve: Mortal ~100, Martial Artist ~300, Cultivator ~700 at stage 0 step 0.
+export const POWER = Object.freeze({
+  base:          100,   // flat floor so Mortal players aren't zero
+  perRealm:      200,   //   +200 per realm tier reached
+  perStage:       30,   //   +30 per stage within current realm
+  perStep:         5,   //   +5 per step within current stage
+});
+
+export const PVP = Object.freeze({
+  startRating:   1000,  // starting prowess rating
+  ratingWindow:   200,  // ± window for matchmaking real opponents
+  eloK:            24,  // ELO K-factor
+  stoneReward:     50,  // 💎 on win
+  aiPowerVariance: 0.3, // AI power is in [0.85, 1.15] × player power
+  aiNames: Object.freeze([
+    'Wandering Disciple',
+    'Solitary Swordsman',
+    'Veiled Scholar',
+    'Silent Monk',
+    'Mountain Hermit',
+    'Drunken Fist Elder',
+    'Ice Blade Maiden',
+    'Crimson Flame Youth',
+    'Ghost-Stepped Assassin',
+    'Thunder Sage',
+    'Jade Mist Cultivator',
+    'Raging Bull Disciple',
+  ]),
+});
+
 // ── Daoists — gacha companions rolled via Spirit Stones or Jade ──
 // Each has a combat power contribution that stacks on the owner's prowess.
 export const DAOISTS = Object.freeze({

@@ -1,5 +1,5 @@
 import { sql, tx } from './database.js';
-import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS } from './config.js';
+import { REALMS, STEP_NAMES, STEP_COST_MULT, BREAKTHROUGH_STEP, PERFECTION_STEPS, CULTIVATION, CURRENCIES, TALENTS, TALENT_RARITY_WEIGHTS, DAOISTS, ROLLS, POWER, PVP } from './config.js';
 
 // ── Player CRUD ──
 
@@ -109,6 +109,87 @@ export function assignDaoistToTeam(playerId, rowId) {
   if (onTeam >= slots) return { success: false, error: slots === 0 ? 'Mortals cultivate alone — breakthrough to form a team.' : 'Team is full.' };
   sql('UPDATE daoists SET in_team=1 WHERE id=?').run(rowId);
   return { success: true, daoist: DAOISTS[row.daoist_id] };
+}
+
+// ── Total power (used for PvP auto-battle outcome) ──
+// basePower × (1 + perfection% + talent%) + teamDaoistPower
+export function getTotalPower(playerId) {
+  const p = getPlayer(playerId);
+  if (!p) return 0;
+  const basePower = POWER.base + p.realm * POWER.perRealm + p.stage * POWER.perStage + p.step * POWER.perStep;
+  const perfPct = (p.prowess_bonus_pct || 0) / 100;
+  const talentPct = sumTalentEffect(playerId, 'prowessBonusPct') / 100;
+  const mult = 1 + perfPct + talentPct;
+  const teamPower = getTeamDaoists(playerId).reduce((s, d) => s + d.power, 0);
+  return Math.floor(basePower * mult + teamPower);
+}
+
+// ── PvP: auto-battle against a real player near your rating, or AI fallback ──
+function eloUpdate(myRating, oppRating, won) {
+  const expected = 1 / (1 + Math.pow(10, (oppRating - myRating) / 400));
+  const actual = won ? 1 : 0;
+  return Math.round(myRating + PVP.eloK * (actual - expected));
+}
+
+function findOpponent(playerId, playerRating) {
+  const lo = playerRating - PVP.ratingWindow, hi = playerRating + PVP.ratingWindow;
+  return sql('SELECT id, username, prowess_rating FROM players WHERE id != ? AND prowess_rating BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1').get(playerId, lo, hi);
+}
+
+export function pvpFight(playerId) {
+  const player = getPlayer(playerId);
+  if (!player) return { success: false, error: 'No player' };
+
+  const myPower = getTotalPower(playerId);
+  const myRating = player.prowess_rating;
+  const realOpp = findOpponent(playerId, myRating);
+
+  let oppName, oppRating, oppPower, oppId = null;
+  if (realOpp) {
+    oppId = realOpp.id;
+    oppName = realOpp.username;
+    oppRating = realOpp.prowess_rating;
+    oppPower = getTotalPower(realOpp.id);
+  } else {
+    // AI fallback — power scaled around mine, rating equal to mine
+    oppName = PVP.aiNames[Math.floor(Math.random() * PVP.aiNames.length)];
+    oppRating = myRating;
+    const variance = 1 + (Math.random() - 0.5) * PVP.aiPowerVariance;
+    oppPower = Math.max(1, Math.floor(myPower * variance));
+  }
+
+  const totalPower = myPower + oppPower;
+  const myWinChance = totalPower > 0 ? myPower / totalPower : 0.5;
+  const won = Math.random() < myWinChance;
+
+  const newMyRating = eloUpdate(myRating, oppRating, won);
+  const ratingDelta = newMyRating - myRating;
+  const stonesEarned = won ? PVP.stoneReward : 0;
+
+  return tx(() => {
+    sql(`UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+?, spirit_stones=spirit_stones+?, last_active=unixepoch() WHERE id=?`)
+      .run(newMyRating, won ? 1 : 0, won ? 0 : 1, stonesEarned, playerId);
+    if (realOpp) {
+      const newOppRating = eloUpdate(oppRating, myRating, !won);
+      sql('UPDATE players SET prowess_rating=?, pvp_wins=pvp_wins+?, pvp_losses=pvp_losses+? WHERE id=?')
+        .run(newOppRating, won ? 0 : 1, won ? 1 : 0, realOpp.id);
+    }
+    return {
+      success: true, won,
+      opponent: { name: oppName, rating: oppRating, power: oppPower, isAi: !realOpp },
+      myPower, ratingBefore: myRating, ratingAfter: newMyRating, ratingDelta,
+      stonesEarned,
+    };
+  });
+}
+
+export function getRankings(limit = 10) {
+  return sql('SELECT id, username, prowess_rating, realm, stage, step FROM players ORDER BY prowess_rating DESC LIMIT ?').all(limit);
+}
+
+export function getMyRank(playerId) {
+  const row = sql('SELECT COUNT(*) + 1 AS rank FROM players WHERE prowess_rating > (SELECT prowess_rating FROM players WHERE id=?)').get(playerId);
+  return row?.rank || 1;
 }
 
 export function removeDaoistFromTeam(playerId, rowId) {

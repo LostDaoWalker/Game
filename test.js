@@ -348,6 +348,44 @@ ok('reassign succeeds with free slot', P.assignDaoistToTeam('teamer', benchDaois
 sql('UPDATE players SET realm=2 WHERE id=?').run('teamer');
 ok('Cultivator gets 4 daoist slots', P.getDaoistSlots(P.getPlayer('teamer')) === 4);
 
+// ── PvP / Prowess rating ──
+P.getOrCreatePlayer('fighter', 'Fighter');
+ok('fresh player has rating 1000', P.getPlayer('fighter').prowess_rating === 1000);
+
+// Total power grows with realm
+const mortalPower = P.getTotalPower('fighter');
+ok('Mortal stage 0 step 0 power floor', mortalPower >= 100);
+
+sql('UPDATE players SET realm=2, stage=3, step=8 WHERE id=?').run('fighter');
+const cultivatorPower = P.getTotalPower('fighter');
+ok('Cultivator power > Mortal power', cultivatorPower > mortalPower);
+
+// pvpFight always resolves (AI fallback if no opponent)
+sql('UPDATE players SET realm=0, stage=0, step=0 WHERE id=?').run('fighter');
+const fight1 = P.pvpFight('fighter');
+ok('pvpFight returns a result',          fight1.success);
+ok('pvpFight returns an opponent',       !!fight1.opponent);
+ok('rating changes after fight',         fight1.ratingAfter !== 1000);
+ok('W/L counter updated',                P.getPlayer('fighter').pvp_wins + P.getPlayer('fighter').pvp_losses === 1);
+
+// Win awards 50 stones
+const startStones = P.getPlayer('fighter').spirit_stones;
+let wins = 0, losses = 0;
+for (let i = 0; i < 20; i++) {
+  const r = P.pvpFight('fighter');
+  if (r.won) wins++; else losses++;
+}
+const endStones = P.getPlayer('fighter').spirit_stones;
+ok('stones awarded only on wins', endStones === startStones + wins * 50);
+
+// Rankings: fighter shows up
+const rankings = P.getRankings(10);
+ok('getRankings returns array',        Array.isArray(rankings));
+ok('rankings sorted by rating desc',   rankings.every((p, i) => i === 0 || rankings[i - 1].prowess_rating >= p.prowess_rating));
+
+// Rank is number
+ok('getMyRank returns number', typeof P.getMyRank('fighter') === 'number');
+
 db.close();
 rmSync('data', { recursive: true, force: true });
 

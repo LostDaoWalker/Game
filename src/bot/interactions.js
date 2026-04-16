@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
 import * as P from '../core/player.js';
-import { TALENT_RARITY_COLORS, ROLLS } from '../core/config.js';
+import { TALENT_RARITY_COLORS, ROLLS, REALMS } from '../core/config.js';
 
 const RARITY_COLORS = TALENT_RARITY_COLORS; // same mapping for daoists
 
@@ -23,12 +23,46 @@ function renderHome(player) {
 
 function homeUI(player) {
   const v = P.getCultivationView(player);
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('cultivate').setLabel('🔥 Cultivate').setStyle(ButtonStyle.Success).setDisabled(!v.canCultivate),
+      new ButtonBuilder().setCustomId('breakthrough').setLabel('⚡ Breakthrough').setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
+      new ButtonBuilder().setCustomId('pvp').setLabel('⚔️ Fight').setStyle(ButtonStyle.Danger),
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('view:profile').setLabel('📜 Profile').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('view:team').setLabel('👥 Team').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('view:roll').setLabel('🎲 Roll').setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId('view:rankings').setLabel('🏆 Rankings').setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+// ── Rankings screen ──
+
+function renderRankings(playerId) {
+  const top = P.getRankings(10);
+  const myRank = P.getMyRank(playerId);
+  const me = P.getPlayer(playerId);
+  const lines = [`🏆 **Top Cultivators**`];
+  if (!top.length) lines.push('*(no players yet)*');
+  else {
+    top.forEach((p, i) => {
+      const realm = REALMS[p.realm];
+      const marker = p.id === playerId ? '**→**' : `**${i + 1}.**`;
+      lines.push(`${marker} ${p.username} — ${p.prowess_rating} *(${realm.icon} ${realm.name})*`);
+    });
+  }
+  if (!top.some(p => p.id === playerId)) {
+    const realm = REALMS[me.realm];
+    lines.push('', `*Your rank: #${myRank} — ${me.prowess_rating} (${realm.icon} ${realm.name})*`);
+  }
+  return lines.join('\n');
+}
+
+function rankingsUI() {
   return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('cultivate').setLabel('🔥 Cultivate').setStyle(ButtonStyle.Success).setDisabled(!v.canCultivate),
-    new ButtonBuilder().setCustomId('breakthrough').setLabel('⚡ Breakthrough').setStyle(ButtonStyle.Primary).setDisabled(!v.canBreakthrough || v.isFinalCap),
-    new ButtonBuilder().setCustomId('view:profile').setLabel('📜 Profile').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('view:team').setLabel('👥 Team').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('view:roll').setLabel('🎲 Roll').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('view:home').setLabel('← Back').setStyle(ButtonStyle.Secondary),
   )];
 }
 
@@ -150,6 +184,10 @@ function renderProfile(playerId) {
   lines.push('', '**Wealth**');
   lines.push(`💎 ${player.spirit_stones} spirit stones · 🟢 ${player.jade} jade`);
 
+  lines.push('', '**Combat**');
+  const power = P.getTotalPower(playerId);
+  lines.push(`Power: ${power} · Prowess rating: ${player.prowess_rating} · ${player.pvp_wins}W / ${player.pvp_losses}L`);
+
   lines.push('', '**Stats**');
   lines.push(`Cultivation rate: ${stats.cultivationRate.toFixed(2)} xp/min` + (stats.rateBonusPct ? ` *(+${stats.rateBonusPct}% from talents)*` : ''));
   lines.push(`Prowess: +${stats.totalProwessBonusPct}%` + (stats.prowessFromTalents ? ` *(${stats.prowessFromPerfections} perfections + ${stats.prowessFromTalents} talents)*` : ''));
@@ -199,10 +237,26 @@ export async function handleButton(interaction) {
   const [action, ...args] = interaction.customId.split(':');
 
   if (action === 'view') {
-    if (args[0] === 'profile') return interaction.update({ content: renderProfile(id), components: profileUI() });
-    if (args[0] === 'roll')    return interaction.update({ content: renderRoll(id), components: rollUI(P.getPlayer(id)) });
-    if (args[0] === 'team')    return interaction.update({ content: renderTeam(id), components: teamUI(id) });
+    if (args[0] === 'profile')  return interaction.update({ content: renderProfile(id), components: profileUI() });
+    if (args[0] === 'roll')     return interaction.update({ content: renderRoll(id), components: rollUI(P.getPlayer(id)) });
+    if (args[0] === 'team')     return interaction.update({ content: renderTeam(id), components: teamUI(id) });
+    if (args[0] === 'rankings') return interaction.update({ content: renderRankings(id), components: rankingsUI() });
     return showHome(interaction);
+  }
+
+  if (action === 'pvp') {
+    const r = P.pvpFight(id);
+    if (!r.success) { const player = P.getPlayer(id); return interaction.update({ content: `⚠️ ${r.error}\n\n${renderHome(player)}`, components: homeUI(player) }); }
+    const outcome = r.won
+      ? `⚔️ **Defeated ${r.opponent.name}**${r.opponent.isAi ? ' *(AI)*' : ''} · +${r.stonesEarned} 💎`
+      : `💔 Lost to **${r.opponent.name}**${r.opponent.isAi ? ' *(AI)*' : ''}`;
+    const ratingLine = `Rating: ${r.ratingBefore} → **${r.ratingAfter}** (${r.ratingDelta >= 0 ? '+' : ''}${r.ratingDelta})`;
+    const powerLine = `Power: ${r.myPower} vs ${r.opponent.power}`;
+    const player = P.getPlayer(id);
+    return interaction.update({
+      content: `${outcome}\n${ratingLine} · ${powerLine}\n\n${renderHome(player)}`,
+      components: homeUI(player),
+    });
   }
 
   if (action === 'roll') {
