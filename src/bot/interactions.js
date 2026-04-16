@@ -18,11 +18,10 @@ function renderHome(player) {
 
 function buildUI(player) {
   const v = P.getCultivationView(player);
-  const meditateLabel = v.meditateCdLeft > 0 ? `🧘 Meditate (${P.formatDuration(v.meditateCdLeft)})` : '🧘 Meditate';
   return [new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('meditate')
-      .setLabel(meditateLabel)
+      .setLabel('🧘 Meditate')
       .setStyle(ButtonStyle.Success)
       .setDisabled(!v.canMeditate),
     new ButtonBuilder()

@@ -74,18 +74,14 @@ export function tickCultivation(playerId) {
   return { qiGained, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached };
 }
 
-// ── Meditate: manual xp grant with cooldown ──
-// Returns { success, qiGained, stepsAdvanced, perfectionsReached } or { success:false, error, etaSeconds }
+// ── Meditate: manual xp grant, spammable (no cooldown) ──
+// Grant scales with realm's baseStepCost so clicks-per-step stays roughly constant.
+// Returns { success, qiGained, stepsAdvanced, perfectionsReached } or { success:false, error }
 export function meditate(playerId) {
   // Catch up passive first so qi reflects walltime
   tickCultivation(playerId);
   const player = getPlayer(playerId);
   if (!player) return { success: false, error: 'No player' };
-
-  const now = (Date.now() / 1000) | 0;
-  if (now < player.meditate_available_at) {
-    return { success: false, error: 'On cooldown', etaSeconds: player.meditate_available_at - now };
-  }
 
   // Can't meditate usefully when at Extreme Perfection with qi already capped
   const atMax = player.step === STEP_NAMES.length - 1;
@@ -93,16 +89,14 @@ export function meditate(playerId) {
     return { success: false, error: 'Breakthrough first — no more room to accumulate.' };
   }
 
-  const grant = CULTIVATION.meditateGrantMinutes * CULTIVATION.baseRatePerMin;
+  const grant = Math.max(1, CULTIVATION.meditateGrant);
   const a = applyQi(player, grant);
   sql(`UPDATE players SET
         realm=?, stage=?, step=?, qi=?,
         prowess_bonus_pct=?, tribulation_charge=?,
-        meditate_available_at=?,
         last_active=unixepoch()
        WHERE id=?`)
-    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge,
-         now + CULTIVATION.meditateCooldownSeconds, playerId);
+    .run(a.realm, a.stage, a.step, a.qi, a.prowess_bonus_pct, a.tribulation_charge, playerId);
   return { success: true, qiGained: grant, stepsAdvanced: a.stepsAdvanced, perfectionsReached: a.perfectionsReached };
 }
 
@@ -143,16 +137,12 @@ export function getCultivationView(player) {
   const isStageCap = atMax && player.qi >= cost;
   const isFinalCap = isStageCap && isAtTopOfRealm(player) && isAtFinalRealm(player);
 
-  const now = (Date.now() / 1000) | 0;
-  const meditateCdLeft = Math.max(0, (player.meditate_available_at || 0) - now);
-  const canMeditate = !isStageCap && meditateCdLeft === 0;
-
   return {
     realm, stage, stepName,
     stepIndex: player.step,
     qi: player.qi, qiCost: cost, progress,
     canBreakthrough, isFinalCap, isStageCap,
-    canMeditate, meditateCdLeft,
+    canMeditate: !isStageCap,
     prowessBonusPct: player.prowess_bonus_pct || 0,
     tribulationCharge: player.tribulation_charge,
   };

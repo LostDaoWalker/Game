@@ -106,42 +106,40 @@ ok('full perfection of a stage = +3 charge',    pFull.tribulation_charge === 3);
 const vProwess = P.getCultivationView(pFull);
 ok('view exposes prowessBonusPct', vProwess.prowessBonusPct === 15);
 
-// ── Meditate ──
-// Reset to fresh state
+// ── Meditate (spammable, no cooldown) ──
+// Reset to fresh state at Mortal realm
 sql(`UPDATE players SET
       realm=0, stage=0, step=0, qi=0, prowess_bonus_pct=0, tribulation_charge=0,
-      cultivation_tick_at=?, meditate_available_at=0
+      cultivation_tick_at=?
      WHERE id=?`).run(((Date.now() / 1000) | 0), 'test');
 
-// First meditate grants 10 xp (10 minutes × 1 qi/min)
+// First meditate grants flat 5 xp (no realm scaling)
 const m1 = P.meditate('test');
-ok('meditate success',          m1.success);
-ok('meditate grants 10 xp',     m1.qiGained === 10);
-// 10 xp: consumes Entry (cost 5) → step=1, qi=5. Early costs 7, so stops at Early with 5 qi.
+ok('meditate success',            m1.success);
+ok('meditate grants flat 5 xp',   m1.qiGained === 5);
+// 5 xp covers Entry (cost 5), step=1 (Early), qi=0
 const pm1 = P.getPlayer('test');
-ok('step advanced to Early after 10 xp', pm1.step === 1);
-ok('qi=5 remaining in Early',            pm1.qi === 5);
+ok('step advanced to Early after first click', pm1.step === 1);
+ok('qi=0 remaining',                            pm1.qi === 0);
 
-// Second meditate immediately is blocked by cooldown
-const m2 = P.meditate('test');
-ok('second meditate blocked by cooldown', !m2.success && m2.error === 'On cooldown');
-ok('cooldown eta exposed',                typeof m2.etaSeconds === 'number' && m2.etaSeconds > 0);
+// Spam works without cooldown — many rapid clicks all succeed
+for (let i = 0; i < 15; i++) P.meditate('test');
+const pm2 = P.getPlayer('test');
+ok('spamming clicks keeps progressing', pm2.step >= 4 || pm2.stage > 0);
 
-// View says meditate is unavailable right now
-const vCd = P.getCultivationView(P.getPlayer('test'));
-ok('view: canMeditate=false during cooldown', !vCd.canMeditate);
-ok('view: meditateCdLeft > 0',                vCd.meditateCdLeft > 0);
+// Grant does NOT scale with realm — Martial Artist still grants 5 xp
+sql('UPDATE players SET realm=1, stage=0, step=0, qi=0 WHERE id=?').run('test');
+const mMA = P.meditate('test');
+ok('Martial Artist meditate still grants flat 5 xp', mMA.qiGained === 5);
 
-// Fast-forward past cooldown and meditate again
-sql('UPDATE players SET meditate_available_at=0 WHERE id=?').run('test');
-const m3 = P.meditate('test');
-ok('meditate after cooldown succeeds', m3.success);
+// Meditate blocked at Extreme Perfection cap
+sql(`UPDATE players SET realm=0, stage=0, step=7, qi=? WHERE id=?`).run(P.stepCost(0, 7), 'test');
+const mCap = P.meditate('test');
+ok('meditate blocked at stage Extreme Perfection cap', !mCap.success);
 
-// Meditate while at Extreme Perfection with qi capped is blocked
-sql(`UPDATE players SET step=7, qi=?, meditate_available_at=0, cultivation_tick_at=? WHERE id=?`)
-  .run(P.stepCost(0, 7), ((Date.now() / 1000) | 0), 'test');
-const m4 = P.meditate('test');
-ok('meditate blocked when qi at Extreme Perfection cap', !m4.success);
+// View exposes canMeditate correctly
+const vCap = P.getCultivationView(P.getPlayer('test'));
+ok('view: canMeditate=false at cap', !vCap.canMeditate);
 
 // ── formatDuration sanity ──
 ok('formatDuration 45s',     P.formatDuration(45) === '45s');
