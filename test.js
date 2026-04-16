@@ -440,6 +440,33 @@ sql('UPDATE players SET realm=0, stage=0, step=5, qi=0, tribulation_charge=0, cu
 P.tickCultivation('trib');
 ok('reaching Greater Perfection grants +1 charge', P.getPlayer('trib').tribulation_charge === 1);
 
+// ── Reroll starter talent (pristine only) ──
+P.getOrCreatePlayer('rero', 'Reroller');
+const rero0 = P.getPlayer('rero');
+ok('pristine player can reroll', P.canRerollStarter(rero0));
+const starter = P.getTalents('rero')[0];
+const before = starter?.id;
+
+// Reroll a few times; the talent may change (not strict equality — same id possible by chance)
+for (let i = 0; i < 5; i++) {
+  const rr = P.rerollStarterTalent('rero');
+  ok('reroll succeeds on pristine player', rr.success);
+  ok('exactly one talent after reroll',    P.getTalents('rero').length === 1);
+}
+
+// Start cultivating → reroll disabled
+P.cultivate('rero');
+ok('after cultivate, reroll blocked', !P.canRerollStarter(P.getPlayer('rero')));
+const rrBlocked = P.rerollStarterTalent('rero');
+ok('reroll call returns error after progress', !rrBlocked.success);
+
+// Odds helpers
+ok('talentTierOdds common = 60',    P.talentTierOdds('common') === 60);
+ok('talentTierOdds legendary = 1',  P.talentTierOdds('legendary') === 1);
+ok('daoistRollOdds stone common=70', P.daoistRollOdds('common', 'stone') === 70);
+ok('daoistRollOdds jade legendary=5', P.daoistRollOdds('legendary', 'jade') === 5);
+ok('daoistRollOdds stone legendary=0', P.daoistRollOdds('legendary', 'stone') === 0);
+
 db.close();
 rmSync('data', { recursive: true, force: true });
 

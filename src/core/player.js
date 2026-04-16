@@ -37,6 +37,33 @@ export function grantTalent(playerId) {
   return t;
 }
 
+// Pristine = player has never cultivated. Once any progress happens, no rerolls.
+export function canRerollStarter(player) {
+  return player && player.realm === 0 && player.stage === 0 && player.step === 0 && player.qi === 0;
+}
+
+export function rerollStarterTalent(playerId) {
+  const player = getPlayer(playerId);
+  if (!player) return { success: false, error: 'No player' };
+  if (!canRerollStarter(player)) return { success: false, error: 'Your path is set. No more rerolls.' };
+  sql('DELETE FROM talents WHERE player_id=?').run(playerId);
+  const t = grantTalent(playerId);
+  return { success: true, talent: t };
+}
+
+// Talent tier weight as percent (e.g. common=60).
+export function talentTierOdds(rarity) {
+  const total = Object.values(TALENT_RARITY_WEIGHTS).reduce((s, w) => s + w, 0);
+  return Math.round((TALENT_RARITY_WEIGHTS[rarity] || 0) * 100 / total);
+}
+
+// Daoist roll odds for a given (rarity, rollType) pair, in percent.
+export function daoistRollOdds(rarity, rollType) {
+  const rates = rollType === 'jade' ? ROLLS.jadeRates : ROLLS.stoneRates;
+  const total = Object.values(rates).reduce((s, w) => s + w, 0);
+  return Math.round((rates[rarity] || 0) * 100 / total);
+}
+
 export function getTalents(playerId) {
   const rows = sql('SELECT * FROM talents WHERE player_id=? ORDER BY granted_at ASC').all(playerId);
   return rows.map(r => {

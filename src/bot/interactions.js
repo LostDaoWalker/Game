@@ -182,8 +182,13 @@ function renderProfile(playerId) {
   if (!talents.length) lines.push('*(none yet)*');
   else for (const t of talents) {
     const tag = TALENT_RARITY_COLORS[t.rarity] || '⚪';
+    const odds = P.talentTierOdds(t.rarity);
     const effects = Object.entries(t.effects || {}).map(formatEffect).filter(Boolean).join(', ');
-    lines.push(`${tag} **${t.name}** — ${effects || '*no effect*'}`);
+    lines.push(`${tag} **${t.name}** *(${odds}%)* — ${effects || '*no effect*'}`);
+  }
+
+  if (P.canRerollStarter(player)) {
+    lines.push('', '*You may reroll your starter talent until you first cultivate.*');
   }
 
   lines.push('', '**Wealth**');
@@ -210,10 +215,13 @@ function formatEffect([key, value]) {
   }
 }
 
-function profileUI() {
-  return [new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('view:home').setLabel('← Back').setStyle(ButtonStyle.Secondary),
-  )];
+function profileUI(playerId) {
+  const player = P.getPlayer(playerId);
+  const row = [new ButtonBuilder().setCustomId('view:home').setLabel('← Back').setStyle(ButtonStyle.Secondary)];
+  if (P.canRerollStarter(player)) {
+    row.unshift(new ButtonBuilder().setCustomId('reroll_starter').setLabel('🎲 Reroll Starter').setStyle(ButtonStyle.Danger));
+  }
+  return [new ActionRowBuilder().addComponents(...row)];
 }
 
 // ── Discord handlers ──
@@ -242,11 +250,22 @@ export async function handleButton(interaction) {
   const [action, ...args] = interaction.customId.split(':');
 
   if (action === 'view') {
-    if (args[0] === 'profile')  return interaction.update({ content: renderProfile(id), components: profileUI() });
+    if (args[0] === 'profile')  return interaction.update({ content: renderProfile(id), components: profileUI(id) });
     if (args[0] === 'roll')     return interaction.update({ content: renderRoll(id), components: rollUI(P.getPlayer(id)) });
     if (args[0] === 'team')     return interaction.update({ content: renderTeam(id), components: teamUI(id) });
     if (args[0] === 'rankings') return interaction.update({ content: renderRankings(id), components: rankingsUI() });
     return showHome(interaction);
+  }
+
+  if (action === 'reroll_starter') {
+    const r = P.rerollStarterTalent(id);
+    if (!r.success) return interaction.update({ content: `⚠️ ${r.error}\n\n${renderProfile(id)}`, components: profileUI(id) });
+    const tag = RARITY_COLORS[r.talent.rarity] || '⚪';
+    const odds = P.talentTierOdds(r.talent.rarity);
+    return interaction.update({
+      content: `🎲 Rerolled — ${tag} **${r.talent.name}** *(${odds}%)*\n\n${renderProfile(id)}`,
+      components: profileUI(id),
+    });
   }
 
   if (action === 'pvp') {
@@ -268,7 +287,8 @@ export async function handleButton(interaction) {
     const r = P.rollDaoist(id, args[0]);
     if (!r.success) return interaction.update({ content: `⚠️ ${r.error}\n\n${renderRoll(id)}`, components: rollUI(P.getPlayer(id)) });
     const tag = RARITY_COLORS[r.daoist.rarity] || '⚪';
-    const banner = `🎲 Rolled ${tag} **${r.daoist.name}** *(${r.daoist.rarity})* · ${r.daoist.power} pwr`;
+    const odds = P.daoistRollOdds(r.daoist.rarity, r.type);
+    const banner = `🎲 Rolled ${tag} **${r.daoist.name}** *(${r.daoist.rarity} · ${odds}%)* · ${r.daoist.power} pwr`;
     return interaction.update({ content: `${banner}\n\n${renderRoll(id)}`, components: rollUI(P.getPlayer(id)) });
   }
 
@@ -290,7 +310,7 @@ export async function handleButton(interaction) {
       ].join('\n');
     } else if (r.kind === 'realm') {
       const coinsLine = `💎 +${r.stonesEarned} · 🟢 +${r.jadeEarned}`;
-      const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity})*` : null;
+      const talentLine = r.talent ? `🌟 New talent: **${r.talent.name}** *(${r.talent.rarity} · ${P.talentTierOdds(r.talent.rarity)}%)*` : null;
       banner = [
         `⚡ **Tribulation** *(${Math.round(r.chance * 100)}% chance)*`,
         `_${r.heartDemon}_`,
